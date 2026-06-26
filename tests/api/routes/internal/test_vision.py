@@ -152,10 +152,9 @@ class TestCreateObservation:
                     entity_name="door_1",
                     camera_id=config_id,
                     state="open",
-                    confidence=0.95,
                 )
             ],
-            raw_llm_response={"door_1": {"state": "open", "confidence": 0.95}},
+            raw_llm_response={"door_1": {"state": "open"}},
             token_usage={"prompt_tokens": 100, "completion_tokens": 20},
         )
 
@@ -194,10 +193,9 @@ class TestCreateObservation:
                     entity_name="oven_1",
                     camera_id=config_id,
                     state="on",
-                    confidence=0.88,
                 )
             ],
-            raw_llm_response={"oven_1": {"state": "on", "confidence": 0.88}},
+            raw_llm_response={"oven_1": {"state": "on"}},
             token_usage={},
         )
 
@@ -349,7 +347,6 @@ class TestGetConfigurationPrompt:
             observed_at=datetime(2026, 5, 19, 10, 0, 0, tzinfo=timezone.utc),
             event_metadata={"is_test": True, "test_group": "group-a"},
             camera_config_id=config_id,
-            confidence=0.9,
             frame_s3_key="s3://bucket/frames/test-frame.jpg",
         )
 
@@ -400,7 +397,6 @@ class TestGetConfigurationPrompt:
             event_info = result.test_events[0].events[0]
             assert event_info.entity_name == "main_gate"
             assert event_info.new_state_name == "open"
-            assert event_info.confidence == 0.9
             assert (
                 event_info.frame_url == "https://s3.amazonaws.com/bucket/presigned-url"
             )
@@ -427,7 +423,6 @@ class TestGetConfigurationPrompt:
             observed_at=datetime(2026, 5, 19, 10, 0, 0, tzinfo=timezone.utc),
             event_metadata={"is_test": True, "test_group": "group-b"},
             camera_config_id=config_id,
-            confidence=0.8,
             frame_s3_key="s3://bucket/frames/bad-frame.jpg",
         )
 

@@ -83,7 +83,6 @@ def test_set_current_state_metadata_preserves_existing_metadata() -> None:
         "occupied",
         observed_at,
         observed_at,
-        0.8,
     )
 
     assert result["label"] == "patio"
@@ -92,7 +91,6 @@ def test_set_current_state_metadata_preserves_existing_metadata() -> None:
         "state": "occupied",
         "current_state_since": observed_at.isoformat(),
         "observed_at": observed_at.isoformat(),
-        "confidence": 0.8,
     }
     assert CURRENT_STATES_METADATA_KEY in result
 
@@ -111,7 +109,6 @@ def test_set_current_state_metadata_can_store_recovery_fields() -> None:
         "clean",
         observed_at,
         observed_at,
-        0.9,
         state_change_event_id=event_id,
         previous_state_id=previous_state_id,
         previous_state_name="dirty",

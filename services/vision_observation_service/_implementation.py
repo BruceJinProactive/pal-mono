@@ -149,13 +149,8 @@ def _build_state_observation_schema(state_names: list[str]) -> dict[str, Any]:
                 "type": "string",
                 "enum": state_names,
             },
-            "confidence": {
-                "type": "number",
-                "minimum": 0.0,
-                "maximum": 1.0,
-            },
         },
-        "required": ["reason", "state", "confidence"],
+        "required": ["reason", "state"],
         "additionalProperties": False,
     }
 
@@ -247,6 +242,7 @@ def _is_legacy_observation(observation: dict[str, Any]) -> bool:
         or observation.get("is_legacy") is True
         or observation.get("format") == "legacy"
         or definition_type == LEGACY_CURRENT_STATE_TYPE
+        or "state" in observation
     )
 
 
@@ -319,10 +315,9 @@ def _build_system_prompt(
         "- Only use active state definitions listed for each entity",
         "- Judge each state definition type independently",
         "- If you cannot clearly determine a state, pick the most likely one "
-        "for that type and reflect that in your confidence score",
-        "- Confidence should be 0.0-1.0 where 1.0 means absolute certainty",
-        "- If an entity is not visible in the frame at all, use confidence 0.0 "
-        "and pick the most reasonable default state",
+        "for that type",
+        "- If an entity is not visible in the frame at all, pick the most "
+        "reasonable default state",
         "- Set image_relevant to false if the camera image is completely "
         "irrelevant to the reference images or the monitored environment "
         "(e.g. a broken feed, black screen, unrelated scene). "
@@ -488,7 +483,6 @@ def _entity_for_recovered_workflow(
         previous_state_name,
         previous_state_since or datetime.now(timezone.utc),
         previous_state_since or datetime.now(timezone.utc),
-        None,
     )
     if is_dataclass(entity) and not isinstance(entity, type):
         return replace(
@@ -512,11 +506,7 @@ async def _recover_applied_smoothing_decision(
     definition_type: str,
     lookup_info: dict[str, Any],
 ) -> None:
-    if (
-        decision.state_id is None
-        or decision.state is None
-        or decision.confidence is None
-    ):
+    if decision.state_id is None or decision.state is None:
         return
 
     current_state = _current_state_for_definition(entity_metadata, definition_type)
@@ -547,7 +537,6 @@ async def _recover_applied_smoothing_decision(
             previous_state_id=_parse_metadata_uuid(
                 current_state.get("previous_state_definition_id")
             ),
-            confidence=decision.confidence,
             frame_s3_key=decision.center_frame_s3_key,
         )
         await event_repo.create(state_change_event)
@@ -612,7 +601,6 @@ async def _apply_state_decision(
     camera_config_id: uuid.UUID,
     state_id: uuid.UUID,
     state_name: str,
-    confidence: float,
     observed_at: datetime,
     frame_s3_key: str | None,
     definition_type: str,
@@ -658,7 +646,6 @@ async def _apply_state_decision(
             event_metadata=event_metadata,
             camera_config_id=camera_config_id,
             previous_state_id=previous_state_id,
-            confidence=confidence,
             frame_s3_key=frame_s3_key,
         )
     updated_metadata = set_current_state_metadata(
@@ -668,7 +655,6 @@ async def _apply_state_decision(
         state_name,
         current_state_since,
         observed_at,
-        confidence,
         state_change_event_id=(
             state_change_event.id
             if state_change_event and include_recovery_metadata
@@ -1134,7 +1120,6 @@ async def generate_observation(
                     definition_type=definition_type,
                     state=state_name,
                     state_id=state_id,
-                    confidence=typed_observation.get("confidence", 0.0),
                 )
             )
 
@@ -1192,7 +1177,6 @@ async def generate_observation(
                     camera_config_id=camera_config_id,
                     state_id=obs.state_id,
                     state_name=obs.state,
-                    confidence=obs.confidence,
                     observed_at=observed_at,
                     frame_s3_key=image_url,
                     definition_type=definition_type,
@@ -1209,7 +1193,6 @@ async def generate_observation(
                     observed_at=observed_at,
                     state_id=obs.state_id,
                     state=obs.state,
-                    confidence=obs.confidence,
                     frame_s3_key=image_url,
                     camera_config_id=camera_config_id,
                 ),
@@ -1246,11 +1229,7 @@ async def generate_observation(
                                 lookup_info=lookup_info,
                             )
                         continue
-                    if (
-                        decision.state_id is None
-                        or decision.state is None
-                        or decision.confidence is None
-                    ):
+                    if decision.state_id is None or decision.state is None:
                         continue
                     entity_for_decisions, entity_metadata = await _apply_state_decision(
                         session=session,
@@ -1262,7 +1241,6 @@ async def generate_observation(
                         camera_config_id=decision.center_camera_config_id,
                         state_id=decision.state_id,
                         state_name=decision.state,
-                        confidence=decision.confidence,
                         observed_at=decision.center_observed_at,
                         frame_s3_key=decision.center_frame_s3_key,
                         definition_type=definition_type,

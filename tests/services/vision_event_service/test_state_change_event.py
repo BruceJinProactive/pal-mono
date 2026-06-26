@@ -39,7 +39,6 @@ def _make_event_data(**overrides: object) -> VisionStateChangeEventData:
         "event_metadata": {},
         "camera_config_id": None,
         "previous_state_id": None,
-        "confidence": None,
         "frame_s3_key": None,
     }
     defaults.update(overrides)
@@ -54,7 +53,6 @@ class TestCreateStateChangeEvent:
         request = CreateStateChangeEventRequest(
             entity_id=ENTITY_ID,
             new_state_id=NEW_STATE_ID,
-            confidence=0.95,
         )
 
         with (
@@ -78,7 +76,6 @@ class TestCreateStateChangeEvent:
 
             assert result.entity_id == ENTITY_ID
             assert result.new_state_id == NEW_STATE_ID
-            assert result.confidence == 0.95
             repo.create.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -101,7 +98,6 @@ class TestCreateStateChangeEvent:
             entity_id=ENTITY_ID,
             new_state_id=NEW_STATE_ID,
             previous_state_id=previous_state_id,
-            confidence=0.95,
         )
 
         with (

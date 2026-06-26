@@ -55,15 +55,9 @@ class TestBuildEntityStateSchema:
             "closed",
         ]
         assert "reason" in schema["properties"]["front_door"]["properties"]
-        assert schema["properties"]["front_door"]["properties"]["confidence"] == {
-            "type": "number",
-            "minimum": 0.0,
-            "maximum": 1.0,
-        }
         assert schema["properties"]["front_door"]["required"] == [
             "reason",
             "state",
-            "confidence",
         ]
         assert set(schema["required"]) == {"front_door", "image_relevant"}
         assert schema["properties"]["image_relevant"] == {"type": "boolean"}
@@ -119,7 +113,6 @@ class TestBuildEntityStateSchema:
         assert table_schema["properties"]["cleanliness"]["required"] == [
             "reason",
             "state",
-            "confidence",
         ]
 
 
@@ -369,14 +362,20 @@ class TestNormalizeImageBytesForLlm:
 
 
 class TestLegacyObservationParsing:
-    def test_top_level_state_without_marker_is_not_legacy(self):
-        assert _is_legacy_observation({"state": "clean", "confidence": 0.9}) is False
+    def test_top_level_state_without_marker_is_legacy(self):
+        assert _is_legacy_observation({"state": "clean"}) is True
+
+    def test_nested_definition_type_map_is_not_legacy(self):
+        assert (
+            _is_legacy_observation(
+                {"cleanliness": {"reason": "The surface is clean.", "state": "clean"}}
+            )
+            is False
+        )
 
     def test_explicit_legacy_marker_is_legacy(self):
         assert (
-            _is_legacy_observation(
-                {"definition_type": "state", "state": "clean", "confidence": 0.9}
-            )
+            _is_legacy_observation({"definition_type": "state", "state": "clean"})
             is True
         )
 
@@ -629,7 +628,7 @@ class TestGenerateObservation:
         mock_entity_type.display_name = "Door"
 
         llm_result = {
-            "result": {"door_1": {"cleanliness": {"state": "open", "confidence": 0.9}}},
+            "result": {"door_1": {"cleanliness": {"state": "open"}}},
             "token_usage": {},
         }
 
@@ -758,7 +757,7 @@ class TestGenerateObservation:
         mock_entity_type.display_name = "Door"
 
         llm_result = {
-            "result": {"door_1": {"cleanliness": {"state": "open", "confidence": 0.9}}},
+            "result": {"door_1": {"cleanliness": {"state": "open"}}},
             "token_usage": {},
         }
 
@@ -1111,7 +1110,6 @@ class TestGenerateObservation:
                     "cleanliness": {
                         "reason": "The oven indicator light is visibly on.",
                         "state": "on",
-                        "confidence": 0.95,
                     }
                 }
             },
@@ -1204,14 +1202,12 @@ class TestGenerateObservation:
             assert result.entity_observations[0].entity_name == "oven_1"
             assert result.entity_observations[0].state == "on"
             assert result.entity_observations[0].state_id == state_id_on
-            assert result.entity_observations[0].confidence == 0.95
             assert result.entity_observations[0].entity_id == entity_id
             assert result.raw_llm_response == {
                 "oven_1": {
                     "cleanliness": {
                         "reason": "The oven indicator light is visibly on.",
                         "state": "on",
-                        "confidence": 0.95,
                     }
                 }
             }
@@ -1233,7 +1229,6 @@ class TestGenerateObservation:
                         "state": "on",
                         "current_state_since": result.observed_at.isoformat(),
                         "observed_at": result.observed_at.isoformat(),
-                        "confidence": 0.95,
                     }
                 }
             }
@@ -1427,7 +1422,6 @@ class TestGenerateObservation:
                     "cleanliness": {
                         "reason": "The table surface is clear.",
                         "state": "clean",
-                        "confidence": 0.93,
                     }
                 },
                 "image_relevant": True,
@@ -1582,7 +1576,6 @@ class TestGenerateObservation:
                     "position": {
                         "reason": "Door panel is visibly ajar.",
                         "state": "open",
-                        "confidence": 0.96,
                     }
                 }
             },
@@ -1725,7 +1718,7 @@ class TestGenerateObservation:
 
         mock_llm_provider = MagicMock()
         mock_llm_provider.analyze_image.return_value = {
-            "result": {"oven_1": {"cleanliness": {"state": "on", "confidence": 0.95}}},
+            "result": {"oven_1": {"cleanliness": {"state": "on"}}},
             "token_usage": {},
         }
 
@@ -1825,7 +1818,7 @@ class TestGenerateObservation:
 
         mock_llm_provider = MagicMock()
         mock_llm_provider.analyze_image.return_value = {
-            "result": {"oven_1": {"cleanliness": {"state": "on", "confidence": 0.95}}},
+            "result": {"oven_1": {"cleanliness": {"state": "on"}}},
             "token_usage": {},
         }
 
@@ -1938,8 +1931,8 @@ class TestGenerateObservation:
         llm_result = {
             "result": {
                 "table_1": {
-                    "cleanliness": {"state": "clean", "confidence": 0.9},
-                    "occupation": {"state": "occupied", "confidence": 0.8},
+                    "cleanliness": {"state": "clean"},
+                    "occupation": {"state": "occupied"},
                 },
                 "image_relevant": True,
             },
@@ -2017,11 +2010,11 @@ class TestGenerateObservation:
 
             assert result is not None
             assert [
-                (obs.definition_type, obs.state, obs.state_id, obs.confidence)
+                (obs.definition_type, obs.state, obs.state_id)
                 for obs in result.entity_observations
             ] == [
-                ("cleanliness", "clean", clean_id, 0.9),
-                ("occupation", "occupied", occupied_id, 0.8),
+                ("cleanliness", "clean", clean_id),
+                ("occupation", "occupied", occupied_id),
             ]
             mock_sd_repo_cls.return_value.list_by_entity_type.assert_awaited_once_with(
                 entity_type_id, is_active=True
@@ -2034,14 +2027,12 @@ class TestGenerateObservation:
                         "state": "clean",
                         "current_state_since": result.observed_at.isoformat(),
                         "observed_at": result.observed_at.isoformat(),
-                        "confidence": 0.9,
                     },
                     "occupation": {
                         "state_definition_id": str(occupied_id),
                         "state": "occupied",
                         "current_state_since": result.observed_at.isoformat(),
                         "observed_at": result.observed_at.isoformat(),
-                        "confidence": 0.8,
                     },
                 }
             }
@@ -2101,9 +2092,7 @@ class TestGenerateObservation:
         mock_entity_type.display_name = "Door"
 
         llm_result = {
-            "result": {
-                "door_1": {"cleanliness": {"state": "closed", "confidence": 0.88}}
-            },
+            "result": {"door_1": {"cleanliness": {"state": "closed"}}},
             "token_usage": {"prompt_tokens": 80, "completion_tokens": 15},
         }
 
@@ -2178,7 +2167,6 @@ class TestGenerateObservation:
             assert len(result.entity_observations) == 1
             assert result.entity_observations[0].state == "closed"
             assert result.entity_observations[0].state_id == state_id_closed
-            assert result.entity_observations[0].confidence == 0.88
             event_create_args = mock_event_repo_cls.return_value.create.await_args
             assert event_create_args is not None
             event = event_create_args.args[0]
@@ -2223,9 +2211,7 @@ class TestGenerateObservation:
         mock_entity_type.display_name = "Zone"
 
         llm_result = {
-            "result": {
-                "entity_1": {"cleanliness": {"state": "normal", "confidence": 0.9}}
-            },
+            "result": {"entity_1": {"cleanliness": {"state": "normal"}}},
             "token_usage": {},
         }
 
@@ -2334,8 +2320,8 @@ class TestGenerateObservation:
 
         llm_result = {
             "result": {
-                "light_1": {"cleanliness": {"state": "on", "confidence": 0.99}},
-                "unknown_entity": {"state": "active", "confidence": 0.5},
+                "light_1": {"cleanliness": {"state": "on"}},
+                "unknown_entity": {"state": "active"},
             },
             "token_usage": {},
         }
@@ -2449,9 +2435,7 @@ class TestGenerateObservation:
 
         mock_llm_provider = MagicMock()
         mock_llm_provider.analyze_image.return_value = {
-            "result": {
-                "table_1": {"cleanliness": {"state": "dirty", "confidence": 0.91}}
-            },
+            "result": {"table_1": {"cleanliness": {"state": "dirty"}}},
             "token_usage": {},
         }
         smoothing_buffer = _FakeSmoothingBuffer(decisions=[])
@@ -2602,9 +2586,7 @@ class TestGenerateObservation:
 
         mock_llm_provider = MagicMock()
         mock_llm_provider.analyze_image.return_value = {
-            "result": {
-                "table_1": {"cleanliness": {"state": "dirty", "confidence": 0.91}}
-            },
+            "result": {"table_1": {"cleanliness": {"state": "dirty"}}},
             "token_usage": {},
         }
         decision = SmoothingDecision(
@@ -2613,7 +2595,6 @@ class TestGenerateObservation:
             center_camera_config_id=center_config_id,
             state_id=dirty_id,
             state="dirty",
-            confidence=0.88,
             metadata={"strategy": "centered_majority_vote", "window_frames": 5},
         )
         smoothing_buffer = _FakeSmoothingBuffer(decisions=[decision])
@@ -2784,9 +2765,7 @@ class TestGenerateObservation:
 
         mock_llm_provider = MagicMock()
         mock_llm_provider.analyze_image.return_value = {
-            "result": {
-                "table_1": {"cleanliness": {"state": "dirty", "confidence": 0.91}}
-            },
+            "result": {"table_1": {"cleanliness": {"state": "dirty"}}},
             "token_usage": {},
         }
         decision = SmoothingDecision(
@@ -2795,7 +2774,6 @@ class TestGenerateObservation:
             center_camera_config_id=center_config_id,
             state_id=dirty_id,
             state="dirty",
-            confidence=0.88,
             metadata={"strategy": "centered_majority_vote", "window_frames": 5},
         )
         smoothing_buffer = _FakeSmoothingBuffer(decisions=[decision])
@@ -2951,9 +2929,7 @@ class TestGenerateObservation:
 
         mock_llm_provider = MagicMock()
         mock_llm_provider.analyze_image.return_value = {
-            "result": {
-                "table_1": {"cleanliness": {"state": "dirty", "confidence": 0.91}}
-            },
+            "result": {"table_1": {"cleanliness": {"state": "dirty"}}},
             "token_usage": {},
         }
         decision = SmoothingDecision(
@@ -2962,7 +2938,6 @@ class TestGenerateObservation:
             center_camera_config_id=center_config_id,
             state_id=dirty_id,
             state="dirty",
-            confidence=0.88,
             metadata={"strategy": "centered_majority_vote", "window_frames": 5},
         )
         smoothing_buffer = _FakeSmoothingBuffer(decisions=[decision])
@@ -3109,9 +3084,7 @@ class TestGenerateObservation:
 
         mock_llm_provider = MagicMock()
         mock_llm_provider.analyze_image.return_value = {
-            "result": {
-                "table_1": {"cleanliness": {"state": "dirty", "confidence": 0.91}}
-            },
+            "result": {"table_1": {"cleanliness": {"state": "dirty"}}},
             "token_usage": {},
         }
 

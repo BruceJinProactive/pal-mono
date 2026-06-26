@@ -29,7 +29,6 @@ def _make_response(**overrides: object) -> StateChangeEventResponse:
         "observed_at": datetime(2026, 5, 1, tzinfo=timezone.utc),
         "camera_config_id": None,
         "previous_state_id": None,
-        "confidence": None,
         "frame_s3_key": None,
         "event_metadata": {},
     }

@@ -60,7 +60,6 @@ def _make_state_change_event_data(
         event_metadata={},
         camera_config_id=None,
         previous_state_id=None,
-        confidence=None,
         frame_s3_key=(
             "security/cameras/account/project/camera/"
             "images/2026-06-23/2026-06-23_14-22-43.jpg"

@@ -424,14 +424,6 @@ def _metadata_datetime(value: object) -> datetime | None:
     return None
 
 
-def _metadata_confidence(value: object) -> float | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    return None
-
-
 def _build_current_state_response(
     current_state: object,
 ) -> EntityCurrentStateResponse | None:
@@ -450,7 +442,6 @@ def _build_current_state_response(
             current_state.get("current_state_since")
         ),
         observed_at=_metadata_datetime(current_state.get("observed_at")),
-        confidence=_metadata_confidence(current_state.get("confidence")),
     )
 
 
@@ -540,7 +531,6 @@ async def create_entity(
             default_state.name,
             now,
             now,
-            None,
         )
     record = VisionEntityData(
         id=uuid.uuid4(),
@@ -686,7 +676,6 @@ async def update_entity_state(
         state_def.name,
         now,
         now,
-        None,
     )
 
     updated = await entity_repo.update(

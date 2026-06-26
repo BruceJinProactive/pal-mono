@@ -24,7 +24,6 @@ def _to_data(row: VisionStateChangeEvent) -> VisionStateChangeEventData:
         event_metadata=dict(row.event_metadata) if row.event_metadata else {},
         camera_config_id=row.camera_config_id,
         previous_state_id=row.previous_state_id,
-        confidence=row.confidence,
         frame_s3_key=row.frame_s3_key,
     )
 
@@ -44,7 +43,6 @@ class VisionStateChangeEventRepository:
                 event_metadata=record.event_metadata,
                 camera_config_id=record.camera_config_id,
                 previous_state_id=record.previous_state_id,
-                confidence=record.confidence,
                 frame_s3_key=record.frame_s3_key,
             )
             self.session.add(row)

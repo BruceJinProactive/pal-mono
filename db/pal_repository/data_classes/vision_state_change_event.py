@@ -15,7 +15,6 @@ class VisionStateChangeEventData:
     event_metadata: dict[str, Any] = field(default_factory=dict)
     camera_config_id: uuid.UUID | None = None
     previous_state_id: uuid.UUID | None = None
-    confidence: float | None = None
     frame_s3_key: str | None = None
 
 

@@ -22,9 +22,6 @@ class EntityObservation(BaseModel):
     state_id: uuid.UUID | None = Field(
         default=None, description="ID of the matched state definition"
     )
-    confidence: float = Field(
-        ..., ge=0.0, le=1.0, description="Confidence score of the observation"
-    )
 
 
 class TestEventInfo(BaseModel):
@@ -40,7 +37,6 @@ class TestEventInfo(BaseModel):
         default=None, description="Name of the new state"
     )
     observed_at: datetime = Field(..., description="When the event was observed")
-    confidence: float | None = Field(default=None, description="Confidence score")
     test_group: str | None = Field(
         default=None, description="Test group this event belongs to"
     )

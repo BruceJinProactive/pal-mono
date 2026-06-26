@@ -34,7 +34,6 @@ def _observation(
         observed_at=observed_at,
         state_id=state_id,
         state=state,
-        confidence=0.9,
         frame_s3_key=frame_s3_key,
         camera_config_id=camera_config_id or uuid.uuid4(),
     )

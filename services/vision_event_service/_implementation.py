@@ -54,7 +54,6 @@ async def _build_response(
         observed_at=data.observed_at,
         camera_config_id=data.camera_config_id,
         previous_state_id=data.previous_state_id,
-        confidence=data.confidence,
         frame_s3_key=frame_url,
         event_metadata=metadata,
         is_test=metadata.get("is_test"),
@@ -109,7 +108,6 @@ async def create_state_change_event(
         event_metadata=metadata,
         camera_config_id=request.camera_config_id,
         previous_state_id=request.previous_state_id,
-        confidence=request.confidence,
         frame_s3_key=request.frame_s3_key,
     )
 

@@ -215,7 +215,6 @@ class EntityCurrentStateResponse(BaseModel):
     state: str | None = None
     current_state_since: datetime | None = None
     observed_at: datetime | None = None
-    confidence: float | None = None
 
 
 class EntityResponse(BaseModel):

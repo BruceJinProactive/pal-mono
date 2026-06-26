@@ -30,7 +30,6 @@ class SmoothingObservation:
     observed_at: datetime
     state_id: uuid.UUID
     state: str
-    confidence: float
     frame_s3_key: str | None
     camera_config_id: uuid.UUID
 
@@ -42,7 +41,6 @@ class SmoothingDecision:
     center_camera_config_id: uuid.UUID
     state_id: uuid.UUID | None
     state: str | None
-    confidence: float | None
     metadata: dict[str, Any]
 
 
@@ -245,7 +243,6 @@ def _serialize_observation(observation: SmoothingObservation) -> dict[str, objec
         "observed_at": _format_datetime(observation.observed_at),
         "state_id": str(observation.state_id),
         "state": observation.state,
-        "confidence": observation.confidence,
         "frame_s3_key": observation.frame_s3_key,
         "camera_config_id": str(observation.camera_config_id),
     }
@@ -255,7 +252,6 @@ def _deserialize_observation(row: dict[str, object]) -> SmoothingObservation | N
     observed_at = _parse_datetime(row.get("observed_at"))
     state_id = _parse_uuid(row.get("state_id"))
     state = row.get("state")
-    confidence = row.get("confidence")
     camera_config_id = _parse_uuid(row.get("camera_config_id"))
     if (
         observed_at is None
@@ -270,7 +266,6 @@ def _deserialize_observation(row: dict[str, object]) -> SmoothingObservation | N
         observed_at=observed_at,
         state_id=state_id,
         state=state,
-        confidence=float(confidence) if isinstance(confidence, int | float) else 0.0,
         frame_s3_key=frame_s3_key if isinstance(frame_s3_key, str) else None,
         camera_config_id=camera_config_id,
     )
@@ -333,7 +328,6 @@ def _vote_window(
     required_votes = len(window) // 2 + 1
     winning_state_id: uuid.UUID | None = None
     winning_state: str | None = None
-    winning_confidence: float | None = None
 
     if len(window) >= 2 and counts:
         top_count = max(counts.values())
@@ -346,9 +340,6 @@ def _vote_window(
                 obs for obs in window if obs.state_id == winning_state_id
             ]
             winning_state = winning_observations[-1].state
-            winning_confidence = sum(
-                obs.confidence for obs in winning_observations
-            ) / len(winning_observations)
 
     return SmoothingDecision(
         center_observed_at=center.observed_at,
@@ -356,7 +347,6 @@ def _vote_window(
         center_camera_config_id=center.camera_config_id,
         state_id=winning_state_id,
         state=winning_state,
-        confidence=winning_confidence,
         metadata={
             "strategy": config.strategy,
             "window_frames": config.window_frames,
@@ -370,7 +360,6 @@ def _vote_window(
                     "observed_at": _format_datetime(obs.observed_at),
                     "state_id": str(obs.state_id),
                     "state": obs.state,
-                    "confidence": obs.confidence,
                     "frame_s3_key": obs.frame_s3_key,
                     "camera_config_id": str(obs.camera_config_id),
                 }

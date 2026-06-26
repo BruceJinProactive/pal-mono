@@ -59,7 +59,6 @@ def _make_state_change(
         observed_at=datetime(2026, 5, 22, tzinfo=timezone.utc),
         camera_config_id=uuid.uuid4(),
         previous_state_id=uuid.uuid4(),
-        confidence=0.91,
         frame_s3_key="cameras/table/frame.jpg",
     )
 

@@ -81,7 +81,7 @@ async def create_observation(
         session: Async database session
 
     Returns:
-        Observation result with entity states, confidence scores, and token usage
+        Observation result with entity states and token usage
 
     Raises:
         400: Missing both image_url and image file, or config validation errors
@@ -228,7 +228,6 @@ async def get_configuration_prompt(
             new_state_id=evt.new_state_id,
             new_state_name=new_state_name,
             observed_at=evt.observed_at,
-            confidence=evt.confidence,
             test_group=group_key,
             frame_url=frame_url,
         )

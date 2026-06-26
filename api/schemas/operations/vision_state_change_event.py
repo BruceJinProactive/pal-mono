@@ -20,9 +20,6 @@ class CreateStateChangeEventRequest(BaseModel):
     previous_state_id: uuid.UUID | None = Field(
         default=None, description="Previous state definition ID"
     )
-    confidence: float | None = Field(
-        default=None, ge=0.0, le=1.0, description="Confidence score"
-    )
     frame_s3_key: str | None = Field(
         default=None, description="S3 key of the frame that triggered the event"
     )
@@ -69,7 +66,6 @@ class StateChangeEventResponse(BaseModel):
     observed_at: datetime
     camera_config_id: uuid.UUID | None
     previous_state_id: uuid.UUID | None
-    confidence: float | None
     frame_s3_key: str | None
     event_metadata: dict[str, Any]
     is_test: bool | None = Field(

@@ -248,7 +248,6 @@ class TestGetEntity:
                         "state": "occupied",
                         "current_state_since": observed_at.isoformat(),
                         "observed_at": observed_at.isoformat(),
-                        "confidence": 0.88,
                     }
                 }
             },
@@ -269,7 +268,6 @@ class TestGetEntity:
                 result.current_states["occupation"].current_state_since == observed_at
             )
             assert result.current_states["occupation"].observed_at == observed_at
-            assert result.current_states["occupation"].confidence == 0.88
 
     def test_current_state_response_ignores_invalid_metadata(self) -> None:
         from services.vision_entity_service._implementation import (
@@ -285,7 +283,6 @@ class TestGetEntity:
                 "state": 123,
                 "current_state_since": observed_at,
                 "observed_at": "not-a-date",
-                "confidence": True,
             }
         )
 
@@ -294,7 +291,6 @@ class TestGetEntity:
         assert response.state is None
         assert response.current_state_since == observed_at
         assert response.observed_at is None
-        assert response.confidence is None
         assert _build_current_state_response("not metadata") is None
         assert (
             _build_current_state_response({"state_definition_id": "not-a-uuid"}) is None

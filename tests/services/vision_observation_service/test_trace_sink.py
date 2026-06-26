@@ -91,7 +91,6 @@ async def test_maybe_write_trace_uploads_images_and_scrubbed_json() -> None:
                     "table_1": {
                         "cleanliness": {
                             "state": "clean",
-                            "confidence": 0.91,
                             "reason": "No dishes visible",
                         }
                     },
@@ -105,7 +104,6 @@ async def test_maybe_write_trace_uploads_images_and_scrubbed_json() -> None:
                         definition_type="cleanliness",
                         state="clean",
                         state_id=state_id,
-                        confidence=0.91,
                     )
                 ],
                 token_usage={"prompt_tokens": 12, "observed": True},

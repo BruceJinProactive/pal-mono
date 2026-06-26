@@ -66,7 +66,6 @@ def sample_orm_row(
     row.event_metadata = {"source": "camera_1"}
     row.camera_config_id = None
     row.previous_state_id = None
-    row.confidence = 0.92
     row.frame_s3_key = None
     return row
 
@@ -85,7 +84,6 @@ def sample_data(
         event_metadata={"source": "camera_1"},
         camera_config_id=None,
         previous_state_id=None,
-        confidence=0.92,
         frame_s3_key=None,
     )
 
@@ -136,7 +134,6 @@ class TestGetById:
 
         assert isinstance(data, VisionStateChangeEventData)
         assert data.id == sample_id
-        assert data.confidence == 0.92
 
     @pytest.mark.asyncio
     async def test_returns_none_when_not_found(

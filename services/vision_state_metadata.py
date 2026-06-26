@@ -79,7 +79,6 @@ def set_current_state_metadata(
     state_name: str,
     current_state_since: datetime,
     observed_at: datetime,
-    confidence: float | None,
     state_change_event_id: uuid.UUID | None = None,
     previous_state_id: uuid.UUID | None = None,
     previous_state_name: str | None = None,
@@ -93,8 +92,6 @@ def set_current_state_metadata(
         "current_state_since": current_state_since.isoformat(),
         "observed_at": observed_at.isoformat(),
     }
-    if confidence is not None:
-        current_state["confidence"] = confidence
     if state_change_event_id is not None:
         current_state["state_change_event_id"] = str(state_change_event_id)
     if previous_state_id is not None:
