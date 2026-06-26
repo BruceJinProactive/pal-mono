@@ -286,6 +286,29 @@ def test_mark_invite_sent_updates_existing_lifecycle() -> None:
     session.refresh.assert_called_once_with(lifecycle)
 
 
+def test_update_folk_ids_persists_ids() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.docusign_signed,
+    )
+    session = MagicMock()
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.update_folk_ids(
+        LIFECYCLE_ID,
+        folk_company_id="folk-company-created",
+        folk_contact_id=None,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.folk_company_id == "folk-company-created"
+    assert lifecycle.folk_contact_id is None
+    assert lifecycle.updated_at is not None
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(lifecycle)
+
+
 def test_mark_invite_opened_advances_from_invite_sent() -> None:
     lifecycle = ClientOnboardingLifecycle(
         id=LIFECYCLE_ID,

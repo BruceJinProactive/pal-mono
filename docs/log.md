@@ -10,6 +10,8 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 - **Client onboarding account creation starts manual-signature handoff.** Manage App client account creation now treats AE submission as confirmation that the DocuSign contract was already manually verified, stores the manual `docusign_signed` lifecycle activity, marks the account contract as signed, queues database/Folk/Slack/Notion/Manage App handoff jobs, and best-effort starts the handoff syncs immediately.
 
+- **Client onboarding Folk company creation.** Post-signature onboarding handoff now creates a Folk company when no `folk_company_id` was supplied, stores the returned Folk ID on the lifecycle, and then applies the contract acceptance metadata update to that company instead of skipping Folk sync.
+
 - **Superseded: client onboarding embedded DocuSign signing URL.** The embedded signing URL path is no longer part of the MVP flow; Admin Console invite onboarding is password setup only, and DocuSign remains manual upstream of Manage App account creation. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 
 - **Order display payload persistence.** Threaded `orders.display_payload`

@@ -213,6 +213,26 @@ class ClientOnboardingRepository:
             logger.exception(f"Error marking client onboarding invite sent: {exc}")
             raise
 
+    def update_folk_ids(
+        self,
+        lifecycle_id: uuid.UUID,
+        *,
+        folk_company_id: str | None,
+        folk_contact_id: str | None,
+    ) -> ClientOnboardingLifecycle:
+        try:
+            lifecycle = self._require_lifecycle(lifecycle_id)
+            lifecycle.folk_company_id = folk_company_id
+            lifecycle.folk_contact_id = folk_contact_id
+            lifecycle.updated_at = datetime.now(timezone.utc)
+            self.session.flush()
+            self.session.refresh(lifecycle)
+            return lifecycle
+        except SQLAlchemyError as exc:
+            self.session.rollback()
+            logger.exception(f"Error updating client onboarding Folk IDs: {exc}")
+            raise
+
     def mark_invite_opened(
         self,
         lifecycle_id: uuid.UUID,

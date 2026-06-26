@@ -97,6 +97,13 @@ T = TypeVar("T")
 
 
 class FolkContractAcceptanceClient(Protocol):
+    async def create_company(
+        self,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
+    async def list_companies(self) -> list[dict[str, Any]]: ...
+
     async def update_company(
         self,
         company_id: str,
@@ -757,34 +764,39 @@ def sync_client_onboarding_contract_acceptance_to_folk(
             ),
         )
 
-    if not lifecycle.folk_company_id and not lifecycle.folk_contact_id:
-        skipped_reason = "No Folk company or contact ID is linked to this lifecycle"
-        onboarding_repo.mark_sync_job_completed(
-            job.id,
-            result_payload={"skipped_reason": skipped_reason},
-        )
-        onboarding_repo.append_activity(
-            lifecycle_id=lifecycle.id,
-            activity_type="folk_contract_acceptance_sync_skipped",
-            actor_type=ClientOnboardingActorType.system,
-            source=ClientOnboardingActivitySource.folk,
-            description=skipped_reason,
-            payload_diff={"sync_job_id": str(job.id)},
-        )
-        session.commit()
-        _attempt_handoff_completion(session, lifecycle.id)
-        return ClientOnboardingFolkSyncResult(
-            lifecycle_id=lifecycle.id,
-            folk_company_id=lifecycle.folk_company_id,
-            folk_contact_id=lifecycle.folk_contact_id,
-            updated_company=False,
-            updated_contact=False,
-            skipped_reason=skipped_reason,
-        )
-
     try:
-        payload = _folk_contract_acceptance_payload(lifecycle)
         client = folk_client or _build_folk_contract_acceptance_client()
+        created_company = False
+        if not lifecycle.folk_company_id:
+            company_id, created_company = _run_async(
+                _resolve_or_create_folk_company(client, lifecycle)
+            )
+            lifecycle = onboarding_repo.update_folk_ids(
+                lifecycle.id,
+                folk_company_id=company_id,
+                folk_contact_id=lifecycle.folk_contact_id,
+            )
+            onboarding_repo.append_activity(
+                lifecycle_id=lifecycle.id,
+                activity_type=(
+                    "folk_company_created" if created_company else "folk_company_linked"
+                ),
+                actor_type=ClientOnboardingActorType.system,
+                source=ClientOnboardingActivitySource.folk,
+                description=(
+                    "Folk company created for client onboarding"
+                    if created_company
+                    else "Existing Folk company linked for client onboarding"
+                ),
+                payload_diff={
+                    "sync_job_id": str(job.id),
+                    "folk_company_id": company_id,
+                    "client_company_name": lifecycle.client_company_name,
+                },
+            )
+            session.commit()
+
+        payload = _folk_contract_acceptance_payload(lifecycle)
         updated_company, updated_contact = _run_async(
             _update_folk_contract_acceptance(
                 client,
@@ -814,6 +826,7 @@ def sync_client_onboarding_contract_acceptance_to_folk(
         result_payload={
             "updated_company": updated_company,
             "updated_contact": updated_contact,
+            "created_company": created_company,
         },
     )
     onboarding_repo.append_activity(
@@ -1613,6 +1626,60 @@ def _folk_contract_acceptance_payload(
         key: value for key, value in field_values.items() if value is not None
     }
     return {"customFieldValues": {settings.folk_group_id: clean_field_values}}
+
+
+def _folk_onboarding_company_payload(
+    lifecycle: ClientOnboardingLifecycle,
+) -> dict[str, str]:
+    return {"name": lifecycle.client_company_name}
+
+
+async def _resolve_or_create_folk_company(
+    client: FolkContractAcceptanceClient,
+    lifecycle: ClientOnboardingLifecycle,
+) -> tuple[str, bool]:
+    existing_company_id = await _find_folk_company_id_by_name(
+        client,
+        lifecycle.client_company_name,
+    )
+    if existing_company_id:
+        return existing_company_id, False
+
+    company = await client.create_company(_folk_onboarding_company_payload(lifecycle))
+    return _created_folk_resource_id(company, "company"), True
+
+
+async def _find_folk_company_id_by_name(
+    client: FolkContractAcceptanceClient,
+    company_name: str,
+) -> str | None:
+    target_name = _normalize_folk_company_name(company_name)
+    for company in await client.list_companies():
+        if _normalize_folk_company_name(_folk_company_name(company)) != target_name:
+            continue
+        company_id = company.get("id")
+        if isinstance(company_id, str) and company_id.strip():
+            return company_id
+    return None
+
+
+def _folk_company_name(company: dict[str, Any]) -> str:
+    for key in ("name", "displayName", "title"):
+        value = company.get(key)
+        if isinstance(value, str):
+            return value
+    return ""
+
+
+def _normalize_folk_company_name(company_name: str) -> str:
+    return " ".join(company_name.casefold().split())
+
+
+def _created_folk_resource_id(resource: dict[str, Any], resource_name: str) -> str:
+    resource_id = resource.get("id")
+    if not isinstance(resource_id, str) or not resource_id.strip():
+        raise RuntimeError(f"Folk {resource_name} creation response did not include id")
+    return resource_id
 
 
 def _build_folk_contract_acceptance_client() -> FolkContractAcceptanceClient:

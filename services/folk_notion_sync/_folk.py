@@ -45,6 +45,36 @@ class FolkClient:
         )
         return _data_object(data)
 
+    async def create_company(
+        self,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        data = await self._request(
+            "POST",
+            f"{self._settings.folk_base_url}/v1/companies",
+            json_payload=payload,
+        )
+        return _data_object(data)
+
+    async def list_companies(self) -> list[dict[str, Any]]:
+        url = f"{self._settings.folk_base_url}/v1/companies?limit=100"
+        items: list[dict[str, Any]] = []
+        while url:
+            data = await self._request("GET", url)
+            body = data.get("data", {})
+            if not isinstance(body, dict):
+                raise ValueError("Folk list_companies payload missing object `data`")
+            raw_items = body.get("items", [])
+            if isinstance(raw_items, list):
+                items.extend(item for item in raw_items if isinstance(item, dict))
+            pagination = body.get("pagination", {})
+            url = (
+                str(pagination.get("nextLink"))
+                if isinstance(pagination, dict) and pagination.get("nextLink")
+                else ""
+            )
+        return items
+
     async def update_contact(
         self,
         contact_id: str,
