@@ -87,6 +87,11 @@ def _patch_dependencies(
     lifecycle = MagicMock()
     lifecycle.id = LIFECYCLE_ID
     lifecycle.status = ClientOnboardingStatus.account_created
+    lifecycle.signer_email = "signer@example.com"
+    lifecycle.docusign_contract_id = None
+    lifecycle.docusign_envelope_id = "env-123"
+    lifecycle.docusign_contract_url = None
+    lifecycle.docusign_signed_at = None
 
     invitation = MagicMock()
     invitation.id = INVITATION_ID
@@ -112,9 +117,27 @@ def _patch_dependencies(
 
     def mark_invite_sent(*args: object, **kwargs: object) -> MagicMock:
         lifecycle.status = ClientOnboardingStatus.invite_sent
+        lifecycle._client_onboarding_transition_changed = True
+        lifecycle._client_onboarding_transition_previous_status = (
+            ClientOnboardingStatus.account_created
+        )
         return lifecycle
 
     onboarding_repo.mark_invite_sent.side_effect = mark_invite_sent
+    sync_job = MagicMock()
+    sync_job.id = UUID("33333333-4444-5555-8666-777777777777")
+    onboarding_repo.upsert_sync_job.return_value = sync_job
+
+    def mark_docusign_signed(*args: object, **kwargs: object) -> MagicMock:
+        lifecycle.status = ClientOnboardingStatus.docusign_signed
+        lifecycle.docusign_signed_at = kwargs["occurred_at"]
+        lifecycle._client_onboarding_transition_changed = True
+        lifecycle._client_onboarding_transition_previous_status = (
+            ClientOnboardingStatus.invite_sent
+        )
+        return lifecycle
+
+    onboarding_repo.mark_docusign_signed.side_effect = mark_docusign_signed
 
     account_user_repo = mocker.patch.object(svc, "AccountUserRepository").return_value
     role_repo = mocker.patch.object(
@@ -125,10 +148,24 @@ def _patch_dependencies(
         "_create_signer_invitation",
         return_value=invitation,
     )
+    attempt_folk_sync = mocker.patch.object(svc, "_attempt_post_signature_folk_sync")
+    attempt_slack_handoff = mocker.patch.object(
+        svc, "_attempt_post_signature_slack_handoff"
+    )
+    attempt_notion_cmd_entry = mocker.patch.object(
+        svc, "_attempt_post_signature_notion_cmd_entry"
+    )
+    attempt_fde_owner_assignment = mocker.patch.object(
+        svc, "_attempt_post_signature_fde_owner_assignment"
+    )
 
     return {
         "account": account,
         "account_user_repo": account_user_repo,
+        "attempt_fde_owner_assignment": attempt_fde_owner_assignment,
+        "attempt_folk_sync": attempt_folk_sync,
+        "attempt_notion_cmd_entry": attempt_notion_cmd_entry,
+        "attempt_slack_handoff": attempt_slack_handoff,
         "create_account": create_account,
         "create_invitation": create_invitation,
         "get_account": get_account,
@@ -153,7 +190,7 @@ def test_create_client_onboarding_account_creates_account_owner_lifecycle_and_in
     assert result.account_name == "acme"
     assert result.account_created is True
     assert result.lifecycle_id == LIFECYCLE_ID
-    assert result.lifecycle_status == ClientOnboardingStatus.invite_sent
+    assert result.lifecycle_status == ClientOnboardingStatus.docusign_signed
     assert result.invitation_id == INVITATION_ID
     assert result.signer_email == "signer@example.com"
     assert result.ae_owner_user_id == AE_USER_ID
@@ -164,7 +201,7 @@ def test_create_client_onboarding_account_creates_account_owner_lifecycle_and_in
     assert account_params.display_name == "Acme"
     assert account_params.status == AccountStatus.pending
     assert account_params.owner == "ae@palona.ai"
-    assert account_params.contract_signed is False
+    assert account_params.contract_signed is True
     assert account_params.onboarding_method == OnboardingMethod.manage_onboarding
     assert deps["create_account"].call_args.kwargs["auto_commit"] is False
 
@@ -200,7 +237,17 @@ def test_create_client_onboarding_account_creates_account_owner_lifecycle_and_in
         "contract_prepared",
         "account_created",
         "invite_sent",
+        "docusign_signed",
     ]
+    deps["onboarding_repo"].mark_docusign_signed.assert_called_once_with(
+        LIFECYCLE_ID,
+        occurred_at=deps["onboarding_repo"].mark_invite_sent.call_args.kwargs[
+            "occurred_at"
+        ],
+        backfill_client_timestamps=False,
+    )
+    assert deps["onboarding_repo"].upsert_sync_job.call_count == 5
+    deps["onboarding_repo"].mark_sync_job_completed.assert_called_once()
 
     deps["create_invitation"].assert_called_once()
     invite_kwargs = deps["create_invitation"].call_args.kwargs
@@ -208,6 +255,10 @@ def test_create_client_onboarding_account_creates_account_owner_lifecycle_and_in
     assert invite_kwargs["signer_email"] == "signer@example.com"
 
     assert session.commit.call_count == 2
+    deps["attempt_folk_sync"].assert_called_once_with(session, LIFECYCLE_ID)
+    deps["attempt_slack_handoff"].assert_called_once_with(session, LIFECYCLE_ID)
+    deps["attempt_notion_cmd_entry"].assert_called_once_with(session, LIFECYCLE_ID)
+    deps["attempt_fde_owner_assignment"].assert_called_once_with(session, LIFECYCLE_ID)
 
 
 def test_create_client_onboarding_account_links_existing_account(
@@ -292,7 +343,7 @@ def test_create_client_onboarding_account_allows_missing_idempotency_key(
         replace(params, idempotency_key=None),
     )
 
-    assert result.lifecycle_status == ClientOnboardingStatus.invite_sent
+    assert result.lifecycle_status == ClientOnboardingStatus.docusign_signed
     deps["onboarding_repo"].get_by_idempotency_key.assert_not_called()
 
 
@@ -2611,6 +2662,21 @@ def test_attempt_handoff_completion_logs_failure(mocker: Any) -> None:
     svc._attempt_handoff_completion(session, LIFECYCLE_ID)
 
     orchestrate.assert_called_once_with(session, LIFECYCLE_ID)
+    logger.assert_called_once()
+
+
+def test_attempt_post_signature_folk_sync_logs_failure(mocker: Any) -> None:
+    session = MagicMock()
+    folk_sync = mocker.patch.object(
+        svc,
+        "sync_client_onboarding_contract_acceptance_to_folk",
+        side_effect=RuntimeError("folk outage"),
+    )
+    logger = mocker.patch.object(svc.logger, "exception")
+
+    svc._attempt_post_signature_folk_sync(session, LIFECYCLE_ID)
+
+    folk_sync.assert_called_once_with(session, LIFECYCLE_ID)
     logger.assert_called_once()
 
 

@@ -266,7 +266,7 @@ def create_client_onboarding_account(
                 display_name=params.account_display_name or params.client_company_name,
                 status=AccountStatus.pending,
                 owner=context.email,
-                contract_signed=False,
+                contract_signed=True,
                 onboarding_method=OnboardingMethod.manage_onboarding,
             ),
             lead_id=None,
@@ -381,7 +381,38 @@ def create_client_onboarding_account(
         },
         occurred_at=invite_sent_at,
     )
+
+    signed_at = invite_sent_at
+    lifecycle = onboarding_repo.mark_docusign_signed(
+        lifecycle.id,
+        occurred_at=signed_at,
+        backfill_client_timestamps=False,
+    )
+    if client_onboarding_transition_changed(lifecycle):
+        onboarding_repo.append_activity(
+            lifecycle_id=lifecycle.id,
+            activity_type=ClientOnboardingStatus.docusign_signed.value,
+            actor_type=ClientOnboardingActorType.ae,
+            actor_id=ae_user_id,
+            actor_display_name=context.display_name or context.email,
+            source=ClientOnboardingActivitySource.manage_app,
+            previous_status=client_onboarding_transition_previous_status(lifecycle)
+            or ClientOnboardingStatus.invite_sent,
+            next_status=ClientOnboardingStatus.docusign_signed,
+            description="AE manually verified signed DocuSign contract before account creation",
+            payload_diff=_manual_docusign_acceptance_payload(lifecycle),
+            occurred_at=signed_at,
+        )
+        _enqueue_post_signature_sync_jobs(
+            onboarding_repo,
+            lifecycle,
+            occurred_at=signed_at,
+        )
     session.commit()
+    _attempt_post_signature_folk_sync(session, lifecycle.id)
+    _attempt_post_signature_slack_handoff(session, lifecycle.id)
+    _attempt_post_signature_notion_cmd_entry(session, lifecycle.id)
+    _attempt_post_signature_fde_owner_assignment(session, lifecycle.id)
 
     return CreateClientOnboardingAccountResult(
         account_id=account.id,
@@ -628,6 +659,20 @@ def _attempt_post_signature_slack_handoff(
     except Exception:
         logger.exception(
             "Client onboarding Slack handoff failed after DocuSign completion",
+            extra={"lifecycle_id": str(lifecycle_id)},
+        )
+        return
+
+
+def _attempt_post_signature_folk_sync(
+    session: Session,
+    lifecycle_id: uuid.UUID,
+) -> None:
+    try:
+        sync_client_onboarding_contract_acceptance_to_folk(session, lifecycle_id)
+    except Exception:  # noqa: BLE001 - handoff sync attempts are best-effort here.
+        logger.exception(
+            "Client onboarding Folk sync failed after manual DocuSign verification",
             extra={"lifecycle_id": str(lifecycle_id)},
         )
         return
@@ -1413,6 +1458,21 @@ def _docusign_completion_payload(
         or _clean_optional_text(params.docusign_contract_url),
         "docusign_status": _clean_optional_text(params.docusign_status),
         "docusign_event_id": _clean_optional_text(params.docusign_event_id),
+    }
+    return payload | {key: value for key, value in optional_values.items() if value}
+
+
+def _manual_docusign_acceptance_payload(
+    lifecycle: ClientOnboardingLifecycle,
+) -> dict[str, str]:
+    payload = {
+        "signer_email": lifecycle.signer_email,
+        "source": "manual_ae_verification",
+    }
+    optional_values = {
+        "docusign_contract_id": lifecycle.docusign_contract_id,
+        "docusign_envelope_id": lifecycle.docusign_envelope_id,
+        "docusign_contract_url": lifecycle.docusign_contract_url,
     }
     return payload | {key: value for key, value in optional_values.items() if value}
 

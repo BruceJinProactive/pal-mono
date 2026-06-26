@@ -459,6 +459,43 @@ def test_mark_docusign_signed_backfills_from_invite_sent() -> None:
     session.refresh.assert_called_once_with(lifecycle)
 
 
+def test_mark_docusign_signed_can_skip_client_timestamp_backfill() -> None:
+    lifecycle = ClientOnboardingLifecycle(
+        id=LIFECYCLE_ID,
+        status=ClientOnboardingStatus.invite_sent,
+    )
+    first_update = MagicMock()
+    first_update.rowcount = 0
+    second_update = MagicMock()
+    second_update.rowcount = 0
+    third_update = MagicMock()
+    third_update.rowcount = 1
+    session = MagicMock()
+    session.execute.side_effect = [first_update, second_update, third_update]
+    session.get.return_value = lifecycle
+    repo = ClientOnboardingRepository(session)
+
+    result = repo.mark_docusign_signed(
+        LIFECYCLE_ID,
+        occurred_at=OCCURRED_AT,
+        backfill_client_timestamps=False,
+    )
+
+    assert result is lifecycle
+    assert lifecycle.status == ClientOnboardingStatus.docusign_signed
+    assert lifecycle.docusign_signed_at == OCCURRED_AT
+    assert lifecycle.docusign_viewed_at is None
+    assert lifecycle.invite_opened_at is None
+    assert client_onboarding_transition_changed(result) is True
+    assert (
+        client_onboarding_transition_previous_status(result)
+        == ClientOnboardingStatus.invite_sent
+    )
+    assert session.execute.call_count == 3
+    session.flush.assert_called_once()
+    session.refresh.assert_called_once_with(lifecycle)
+
+
 def test_mark_docusign_signed_does_not_downgrade_post_signature_status() -> None:
     lifecycle = ClientOnboardingLifecycle(
         id=LIFECYCLE_ID,

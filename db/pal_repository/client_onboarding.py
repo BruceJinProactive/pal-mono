@@ -299,6 +299,7 @@ class ClientOnboardingRepository:
         lifecycle_id: uuid.UUID,
         *,
         occurred_at: datetime | None = None,
+        backfill_client_timestamps: bool = True,
     ) -> ClientOnboardingLifecycle:
         try:
             signed_at = occurred_at or datetime.now(timezone.utc)
@@ -312,6 +313,7 @@ class ClientOnboardingRepository:
                     lifecycle_id,
                     previous_status=candidate_status,
                     occurred_at=signed_at,
+                    backfill_client_timestamps=backfill_client_timestamps,
                 )
                 if previous_status is not None:
                     break
@@ -321,9 +323,9 @@ class ClientOnboardingRepository:
             if transition_changed:
                 lifecycle.status = ClientOnboardingStatus.docusign_signed
                 lifecycle.docusign_signed_at = signed_at
-                if lifecycle.invite_opened_at is None:
+                if backfill_client_timestamps and lifecycle.invite_opened_at is None:
                     lifecycle.invite_opened_at = signed_at
-                if lifecycle.docusign_viewed_at is None:
+                if backfill_client_timestamps and lifecycle.docusign_viewed_at is None:
                     lifecycle.docusign_viewed_at = signed_at
             self.session.flush()
             self.session.refresh(lifecycle)
@@ -769,32 +771,39 @@ class ClientOnboardingRepository:
         *,
         previous_status: ClientOnboardingStatus,
         occurred_at: datetime,
+        backfill_client_timestamps: bool,
     ) -> ClientOnboardingStatus | None:
+        values: dict[str, Any] = {
+            "status": ClientOnboardingStatus.docusign_signed,
+            "docusign_signed_at": occurred_at,
+            "updated_at": occurred_at,
+        }
+        if backfill_client_timestamps:
+            values.update(
+                {
+                    "docusign_viewed_at": case(
+                        (
+                            ClientOnboardingLifecycle.docusign_viewed_at.is_(None),
+                            occurred_at,
+                        ),
+                        else_=ClientOnboardingLifecycle.docusign_viewed_at,
+                    ),
+                    "invite_opened_at": case(
+                        (
+                            ClientOnboardingLifecycle.invite_opened_at.is_(None),
+                            occurred_at,
+                        ),
+                        else_=ClientOnboardingLifecycle.invite_opened_at,
+                    ),
+                }
+            )
         result = self.session.execute(
             update(ClientOnboardingLifecycle)
             .where(
                 ClientOnboardingLifecycle.id == lifecycle_id,
                 ClientOnboardingLifecycle.status == previous_status,
             )
-            .values(
-                status=ClientOnboardingStatus.docusign_signed,
-                docusign_signed_at=occurred_at,
-                docusign_viewed_at=case(
-                    (
-                        ClientOnboardingLifecycle.docusign_viewed_at.is_(None),
-                        occurred_at,
-                    ),
-                    else_=ClientOnboardingLifecycle.docusign_viewed_at,
-                ),
-                invite_opened_at=case(
-                    (
-                        ClientOnboardingLifecycle.invite_opened_at.is_(None),
-                        occurred_at,
-                    ),
-                    else_=ClientOnboardingLifecycle.invite_opened_at,
-                ),
-                updated_at=occurred_at,
-            )
+            .values(**values)
             .execution_options(synchronize_session="fetch")
         )
         return previous_status if _rowcount_changed(result) else None
@@ -1066,6 +1075,7 @@ class ClientOnboardingRepositoryAsync:
         lifecycle_id: uuid.UUID,
         *,
         occurred_at: datetime | None = None,
+        backfill_client_timestamps: bool = True,
     ) -> ClientOnboardingLifecycle:
         try:
             signed_at = occurred_at or datetime.now(timezone.utc)
@@ -1079,6 +1089,7 @@ class ClientOnboardingRepositoryAsync:
                     lifecycle_id,
                     previous_status=candidate_status,
                     occurred_at=signed_at,
+                    backfill_client_timestamps=backfill_client_timestamps,
                 )
                 if previous_status is not None:
                     break
@@ -1088,9 +1099,9 @@ class ClientOnboardingRepositoryAsync:
             if transition_changed:
                 lifecycle.status = ClientOnboardingStatus.docusign_signed
                 lifecycle.docusign_signed_at = signed_at
-                if lifecycle.invite_opened_at is None:
+                if backfill_client_timestamps and lifecycle.invite_opened_at is None:
                     lifecycle.invite_opened_at = signed_at
-                if lifecycle.docusign_viewed_at is None:
+                if backfill_client_timestamps and lifecycle.docusign_viewed_at is None:
                     lifecycle.docusign_viewed_at = signed_at
             await self.session.flush()
             await self.session.refresh(lifecycle)
@@ -1406,32 +1417,39 @@ class ClientOnboardingRepositoryAsync:
         *,
         previous_status: ClientOnboardingStatus,
         occurred_at: datetime,
+        backfill_client_timestamps: bool,
     ) -> ClientOnboardingStatus | None:
+        values: dict[str, Any] = {
+            "status": ClientOnboardingStatus.docusign_signed,
+            "docusign_signed_at": occurred_at,
+            "updated_at": occurred_at,
+        }
+        if backfill_client_timestamps:
+            values.update(
+                {
+                    "docusign_viewed_at": case(
+                        (
+                            ClientOnboardingLifecycle.docusign_viewed_at.is_(None),
+                            occurred_at,
+                        ),
+                        else_=ClientOnboardingLifecycle.docusign_viewed_at,
+                    ),
+                    "invite_opened_at": case(
+                        (
+                            ClientOnboardingLifecycle.invite_opened_at.is_(None),
+                            occurred_at,
+                        ),
+                        else_=ClientOnboardingLifecycle.invite_opened_at,
+                    ),
+                }
+            )
         result = await self.session.execute(
             update(ClientOnboardingLifecycle)
             .where(
                 ClientOnboardingLifecycle.id == lifecycle_id,
                 ClientOnboardingLifecycle.status == previous_status,
             )
-            .values(
-                status=ClientOnboardingStatus.docusign_signed,
-                docusign_signed_at=occurred_at,
-                docusign_viewed_at=case(
-                    (
-                        ClientOnboardingLifecycle.docusign_viewed_at.is_(None),
-                        occurred_at,
-                    ),
-                    else_=ClientOnboardingLifecycle.docusign_viewed_at,
-                ),
-                invite_opened_at=case(
-                    (
-                        ClientOnboardingLifecycle.invite_opened_at.is_(None),
-                        occurred_at,
-                    ),
-                    else_=ClientOnboardingLifecycle.invite_opened_at,
-                ),
-                updated_at=occurred_at,
-            )
+            .values(**values)
             .execution_options(synchronize_session="fetch")
         )
         return previous_status if _rowcount_changed(result) else None
