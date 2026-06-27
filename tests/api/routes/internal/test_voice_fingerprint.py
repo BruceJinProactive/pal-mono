@@ -75,6 +75,8 @@ def _make_analytics() -> dict:
         "language": MagicMock(value="english"),
         "transfer_reason_category": None,
         "transfer_agent_was_at_fault": None,
+        "call_quality_label": MagicMock(value="legitimate_restaurant_call"),
+        "call_quality_reason_codes": ["restaurant_intent_present"],
     }
 
 

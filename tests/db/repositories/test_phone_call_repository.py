@@ -5,7 +5,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from db.repositories.phone_call_repository import PhoneCallRepositoryAsync
-from db.tables.types import CallEndedReason, CallLanguage, CallPurpose, UserSatisfaction
+from db.tables.types import (
+    CallEndedReason,
+    CallLanguage,
+    CallPurpose,
+    CallQualityLabel,
+    UserSatisfaction,
+)
 
 
 @pytest.mark.asyncio
@@ -26,6 +32,8 @@ async def test_update_phone_call_sets_transfer_reason_fields() -> None:
         language=CallLanguage.english,
         transfer_reason_category="tool_failure_order",
         transfer_agent_was_at_fault=True,
+        call_quality_label=CallQualityLabel.legitimate_restaurant_call,
+        call_quality_reason_codes=["restaurant_intent_present"],
     )
 
     assert updated is phone_call
@@ -35,4 +43,6 @@ async def test_update_phone_call_sets_transfer_reason_fields() -> None:
     assert phone_call.language is CallLanguage.english
     assert phone_call.transfer_reason_category == "tool_failure_order"
     assert phone_call.transfer_agent_was_at_fault is True
+    assert phone_call.call_quality_label is CallQualityLabel.legitimate_restaurant_call
+    assert phone_call.call_quality_reason_codes == ["restaurant_intent_present"]
     session.flush.assert_awaited_once()

@@ -30,6 +30,7 @@ from db.tables.types import (
     CallEndedReason,
     CallLanguage,
     CallPurpose,
+    CallQualityLabel,
     SpeechRate,
     UserSatisfaction,
 )
@@ -345,6 +346,11 @@ class TestVoiceRepositoryIntegration:
             language=CallLanguage.english,
             transfer_reason_category="tool_failure_order",
             transfer_agent_was_at_fault=True,
+            call_quality_label=CallQualityLabel.legitimate_restaurant_call,
+            call_quality_reason_codes=[
+                "restaurant_intent_present",
+                "order_or_reservation_intent",
+            ],
         )
 
         result = db_session.execute(
@@ -363,6 +369,11 @@ class TestVoiceRepositoryIntegration:
         assert result.language == CallLanguage.english
         assert result.transfer_reason_category == "tool_failure_order"
         assert result.transfer_agent_was_at_fault is True
+        assert result.call_quality_label == CallQualityLabel.legitimate_restaurant_call
+        assert result.call_quality_reason_codes == [
+            "restaurant_intent_present",
+            "order_or_reservation_intent",
+        ]
 
     def test_phone_call_update_analytics(self, db_session: Session) -> None:
         """PhoneCall analytics can be updated after initial creation (end_voice_call path)."""

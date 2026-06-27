@@ -48,6 +48,8 @@ def _make_analytics() -> dict[str, Any]:
         "language": SimpleNamespace(value="english"),
         "transfer_reason_category": None,
         "transfer_agent_was_at_fault": None,
+        "call_quality_label": SimpleNamespace(value="unknown_unclear"),
+        "call_quality_reason_codes": [],
     }
 
 

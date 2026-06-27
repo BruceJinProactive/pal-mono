@@ -21,7 +21,13 @@ from api.schemas.internal.voice_init import (
     InterruptionEvent,
     TurnLatency,
 )
-from db.tables.types import CallEndedReason, CallLanguage, CallPurpose, UserSatisfaction
+from db.tables.types import (
+    CallEndedReason,
+    CallLanguage,
+    CallPurpose,
+    CallQualityLabel,
+    UserSatisfaction,
+)
 from events.schema import (
     AudioRecordingReference,
     BaseEvent,
@@ -50,6 +56,8 @@ def _make_analytics():
         "language": MagicMock(value="english"),
         "transfer_reason_category": None,
         "transfer_agent_was_at_fault": None,
+        "call_quality_label": MagicMock(value="legitimate_restaurant_call"),
+        "call_quality_reason_codes": ["restaurant_intent_present"],
     }
 
 
@@ -88,6 +96,8 @@ def _valid_analytics_payload(**overrides):
         "language": "english",
         "transfer_reason_category": "tool_failure_order",
         "transfer_agent_was_at_fault": True,
+        "call_quality_label": "legitimate_restaurant_call",
+        "call_quality_reason_codes": ["restaurant_intent_present"],
     }
     payload.update(overrides)
     return payload
@@ -112,6 +122,8 @@ class TestAnalyticsHelpers:
                 transfer_agent_was_at_fault=True,
             ),
             _valid_analytics_payload(ended_reason="not_a_reason"),
+            _valid_analytics_payload(call_quality_label="not_a_quality_label"),
+            _valid_analytics_payload(call_quality_reason_codes=["made_up"]),
         ],
     )
     def test_validate_rejects_invalid_transfer_reason_payloads(
@@ -128,6 +140,11 @@ class TestAnalyticsHelpers:
         assert normalized["language"] is CallLanguage.english
         assert normalized["transfer_reason_category"] == "tool_failure_order"
         assert normalized["transfer_agent_was_at_fault"] is True
+        assert (
+            normalized["call_quality_label"]
+            is CallQualityLabel.legitimate_restaurant_call
+        )
+        assert normalized["call_quality_reason_codes"] == ["restaurant_intent_present"]
 
     def test_get_default_analytics_has_null_transfer_fields(self) -> None:
         analytics = _get_default_analytics()
@@ -138,6 +155,37 @@ class TestAnalyticsHelpers:
         assert analytics["language"] is CallLanguage.english
         assert analytics["transfer_reason_category"] is None
         assert analytics["transfer_agent_was_at_fault"] is None
+        assert analytics["call_quality_label"] is CallQualityLabel.unknown_unclear
+        assert analytics["call_quality_reason_codes"] == []
+
+    def test_get_default_analytics_uses_silence_close_reason(self) -> None:
+        analytics = _get_default_analytics(
+            close_reason="silence-timed-out",
+            conversation_history=[],
+        )
+
+        assert analytics["ended_reason"] is CallEndedReason.silence_timeout
+        assert analytics["call_quality_label"] is CallQualityLabel.unknown_unclear
+        assert analytics["call_quality_reason_codes"] == [
+            "live_close_reason_silence_timeout",
+            "no_user_audio",
+        ]
+
+    def test_get_default_analytics_does_not_infer_no_user_audio_from_silence(
+        self,
+    ) -> None:
+        analytics = _get_default_analytics(
+            close_reason="silence-timed-out",
+            conversation_history=[
+                {"role": "assistant", "content": "Hello"},
+                {"role": "user", "content": "Can I order pizza?"},
+            ],
+        )
+
+        assert analytics["ended_reason"] is CallEndedReason.silence_timeout
+        assert analytics["call_quality_reason_codes"] == [
+            "live_close_reason_silence_timeout"
+        ]
 
     @pytest.mark.asyncio
     async def test_call_analytics_with_retry_passes_transfer_purpose_and_normalizes(
@@ -155,6 +203,8 @@ class TestAnalyticsHelpers:
             analytics = await _call_analytics_with_retry(
                 [{"role": "user", "content": "representative"}],
                 transfer_purpose="general",
+                close_reason="assistant-forwarded-call",
+                duration_seconds=12.5,
                 max_retries=1,
                 base_delay=0,
             )
@@ -162,12 +212,18 @@ class TestAnalyticsHelpers:
         mock_extract.assert_awaited_once_with(
             [{"role": "user", "content": "representative"}],
             transfer_purpose="general",
+            close_reason="assistant-forwarded-call",
+            duration_seconds=12.5,
         )
         assert analytics is not None
         assert analytics["ended_reason"] is CallEndedReason.assistant_forwarded
         assert analytics["call_purpose"] == [CallPurpose.ordering]
         assert analytics["transfer_reason_category"] == "cold_opt_out"
         assert analytics["transfer_agent_was_at_fault"] is False
+        assert (
+            analytics["call_quality_label"]
+            is CallQualityLabel.legitimate_restaurant_call
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -385,6 +441,10 @@ async def test_publish_event_success():
         assert event.call_metadata["duration_seconds"] == 42.5
         assert event.call_metadata["ended_reason"] == "customer_ended"
         assert event.call_metadata["call_purpose"] == ["ordering"]
+        assert event.call_metadata["call_quality_label"] == "legitimate_restaurant_call"
+        assert event.call_metadata["call_quality_reason_codes"] == [
+            "restaurant_intent_present"
+        ]
         assert len(event.transcript) == 2
         assert event.transcript[0]["speaker"] == "agent"
         assert event.transcript[1]["speaker"] == "user"
@@ -428,6 +488,8 @@ async def test_publish_event_no_analytics_uses_close_reason():
         assert event.call_metadata["ended_reason"] == "silence_timeout"
         assert event.call_metadata["call_purpose"] == []
         assert event.call_metadata["language"] == "english"
+        assert event.call_metadata["call_quality_label"] == "unknown_unclear"
+        assert event.call_metadata["call_quality_reason_codes"] == []
 
 
 @pytest.mark.asyncio
@@ -580,6 +642,7 @@ async def test_publish_event_no_analytics_unknown_close_reason_defaults_to_other
 
         event = mock_publish.call_args[0][0]
         assert event.call_metadata["ended_reason"] == "other"
+        assert event.call_metadata["call_quality_label"] == "unknown_unclear"
 
 
 @pytest.mark.asyncio

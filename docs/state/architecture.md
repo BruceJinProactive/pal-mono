@@ -378,9 +378,14 @@ default to `now()`.
 
 `phone_calls` stores post-call voice analytics such as duration, latency,
 ended reason, call purpose, user satisfaction, language, and transfer reason
-classification. Transfer reason analysis is folded into the same post-call LLM
-analytics pass as call purpose and satisfaction; `transfer_purpose` remains live
-routing metadata on `conversations`.
+classification. It also stores the post-call call-quality classifier result:
+`call_quality_label` and `call_quality_reason_codes` for separating legitimate
+restaurant calls from robot/prerecorded, promotional, spam/scam, prank/abusive,
+and unclear calls. Silence timeouts and misdials are represented by
+`ended_reason`; call-quality reason codes may still preserve supporting signals
+such as no user audio. Transfer reason and call-quality analysis are folded into
+the same post-call LLM analytics pass as call purpose and satisfaction;
+`transfer_purpose` remains live routing metadata on `conversations`.
 
 *Transactions*: `orders`, `adora_orders`, `reservations`, `catering_requests`,
 `catering_request_activities`

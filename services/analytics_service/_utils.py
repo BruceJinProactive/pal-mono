@@ -161,6 +161,78 @@ TRANSFER_REASON_METADATA_BY_KEY: dict[str, TransferReasonMetadata] = {
 }
 
 
+@dataclass(frozen=True)
+class CallQualityMetadata:
+    key: str
+    prompt_description: str
+
+
+CALL_QUALITY_LABEL_METADATA: tuple[CallQualityMetadata, ...] = (
+    CallQualityMetadata(
+        key="legitimate_restaurant_call",
+        prompt_description=(
+            "A real caller asking about the restaurant, menu, ordering, "
+            "reservations, hours, delivery, complaints, or another legitimate "
+            "restaurant/customer-service matter."
+        ),
+    ),
+    CallQualityMetadata(
+        key="robot_prerecorded",
+        prompt_description=(
+            "Prerecorded, synthetic, IVR, auto-dialer, or bot-like speech that "
+            "is not trying to have a normal restaurant conversation."
+        ),
+    ),
+    CallQualityMetadata(
+        key="promotional_sales",
+        prompt_description=(
+            "Sales, marketing, vendor, recruiting, supplier, SEO, financing, "
+            "or other promotional outreach to the restaurant rather than a "
+            "customer checking on restaurant services."
+        ),
+    ),
+    CallQualityMetadata(
+        key="spam_scam",
+        prompt_description=(
+            "Likely scam, phishing, fraud, spoofing, suspicious lead-gen, or "
+            "other spam unrelated to legitimate restaurant operations."
+        ),
+    ),
+    CallQualityMetadata(
+        key="prank_or_abusive",
+        prompt_description=(
+            "Prank, harassment, abusive language, or intentionally disruptive "
+            "call with no legitimate restaurant purpose."
+        ),
+    ),
+    CallQualityMetadata(
+        key="unknown_unclear",
+        prompt_description=(
+            "Insufficient evidence to classify the call quality with confidence."
+        ),
+    ),
+)
+CALL_QUALITY_REASON_CODES: tuple[str, ...] = (
+    "restaurant_intent_present",
+    "caller_asked_restaurant_question",
+    "order_or_reservation_intent",
+    "no_user_audio",
+    "assistant_only_transcript",
+    "only_background_noise_or_dead_air",
+    "empty_or_near_empty_transcript",
+    "prerecorded_or_synthetic_voice",
+    "repeated_script_or_bot_behavior",
+    "sales_or_vendor_outreach",
+    "generic_marketing_pitch",
+    "scam_or_phishing_attempt",
+    "wrong_number_or_misdial",
+    "off_topic_non_restaurant",
+    "abusive_or_prank_language",
+    "insufficient_evidence",
+    "live_close_reason_silence_timeout",
+)
+
+
 def format_transfer_reason_taxonomy_for_prompt() -> str:
     """Return transfer reason taxonomy lines for the post-call analytics prompt."""
     return "\n".join(
@@ -188,6 +260,14 @@ def format_transfer_agent_fault_defaults_for_prompt() -> str:
             f"   - false for: {', '.join(false_categories)}.",
             "   - null when transfer_reason_category is null.",
         ]
+    )
+
+
+def format_call_quality_taxonomy_for_prompt() -> str:
+    """Return call-quality taxonomy lines for the post-call analytics prompt."""
+    return "\n".join(
+        f"   - {metadata.key}: {metadata.prompt_description}"
+        for metadata in CALL_QUALITY_LABEL_METADATA
     )
 
 
@@ -790,9 +870,31 @@ def _normalize_transfer_agent_was_at_fault(value: object) -> bool | None:
     raise ValueError("transfer_agent_was_at_fault must be a boolean or null")
 
 
+def _normalize_call_quality_reason_codes(value: object) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("call_quality_reason_codes must be a list of strings")
+
+    normalized_codes: list[str] = []
+    for code in value:
+        if not isinstance(code, str):
+            raise ValueError("call_quality_reason_codes must be a list of strings")
+        normalized = code.strip()
+        if not normalized:
+            continue
+        if normalized not in CALL_QUALITY_REASON_CODES:
+            raise ValueError(f"Invalid call_quality_reason_code: {normalized}")
+        if normalized not in normalized_codes:
+            normalized_codes.append(normalized)
+    return normalized_codes
+
+
 async def extract_call_analytics(
     conversation_history: list[dict],
     transfer_purpose: str | None = None,
+    close_reason: str | None = None,
+    duration_seconds: float | None = None,
 ) -> dict:
     """
     Extract analytics from conversation using LLM.
@@ -800,6 +902,8 @@ async def extract_call_analytics(
     Args:
         conversation_history: List of message dicts in format [{"role": "user/assistant", "content": "..."}]
         transfer_purpose: Live routing purpose from call_transfer, if one was captured.
+        close_reason: Voice provider close reason captured at end of call.
+        duration_seconds: Call duration in seconds, if provided by the provider.
 
     Returns:
         dict: {
@@ -808,7 +912,9 @@ async def extract_call_analytics(
             "user_satisfaction": UserSatisfaction,
             "language": CallLanguage,
             "transfer_reason_category": str | None,
-            "transfer_agent_was_at_fault": bool | None
+            "transfer_agent_was_at_fault": bool | None,
+            "call_quality_label": CallQualityLabel,
+            "call_quality_reason_codes": list[str]
         }
     """
     import json
@@ -818,18 +924,26 @@ async def extract_call_analytics(
         CallEndedReason,
         CallLanguage,
         CallPurpose,
+        CallQualityLabel,
         UserSatisfaction,
     )
 
     transfer_categories = ", ".join(TRANSFER_REASON_CATEGORIES)
     transfer_taxonomy = format_transfer_reason_taxonomy_for_prompt()
     transfer_fault_defaults = format_transfer_agent_fault_defaults_for_prompt()
+    call_quality_taxonomy = format_call_quality_taxonomy_for_prompt()
+    call_quality_reason_codes = ", ".join(CALL_QUALITY_REASON_CODES)
     transfer_purpose_context = transfer_purpose or "none"
+    close_reason_context = close_reason or "unknown"
+    duration_context = (
+        f"{duration_seconds:.3f}" if duration_seconds is not None else "unknown"
+    )
 
     # Build system prompt with all enum options
     system_prompt = f"""Analyze this restaurant phone-call conversation and extract one unified post-call analytics JSON object.
 
 Use the transcript as the source of truth. Use the live transfer_purpose context only as a signal that the agent invoked call_transfer and how it tried to route the call.
+Use the live close_reason and duration only as supporting context for ended_reason and call-quality reason codes. Do not duplicate misdialed or silence_timeout as call_quality_label values.
 
 Global transfer signals:
 - If live transfer_purpose is anything other than "none", treat the call as having a transfer signal.
@@ -865,18 +979,32 @@ The call_purpose array must contain at least one of the exact values above. Do n
 
 Do not use call_purpose for transfer root cause. Example: an order tool failure should usually have call_purpose ["ordering"] and transfer_reason_category "tool_failure_order".
 
-3. user_satisfaction: Choose ONE from:
+3. call_quality_label: Choose ONE from:
+{call_quality_taxonomy}
+
+Quality classification rules:
+   - Use legitimate_restaurant_call when there is a real restaurant/customer-service intent, even if the call later transfers, fails, or ends poorly.
+   - Use promotional_sales for vendor/sales/marketing outreach even if the caller asks to speak to a manager.
+   - Use robot_prerecorded when the caller side appears automated or prerecorded; use spam_scam when the content is suspicious/fraudulent.
+   - Use prank_or_abusive when the caller is harassing, intentionally disruptive, or making a prank call with no legitimate restaurant purpose.
+   - For calls that only indicate a wrong number/misdial or no substantive caller speech, use ended_reason (misdialed or silence_timeout) and set call_quality_label to unknown_unclear unless another quality label is supported.
+   - Use unknown_unclear only when the transcript and provider context do not support another label.
+
+4. call_quality_reason_codes: Choose zero or more exact reason codes from:
+   {call_quality_reason_codes}
+
+5. user_satisfaction: Choose ONE from:
    - positive: Customer satisfied, polite close, needs resolved
    - neutral: Mixed signals, partially resolved, or indifferent
    - negative: Dissatisfied, frustrated, or issue not resolved
 
-4. language: Choose ONE from:
+6. language: Choose ONE from:
    - english: English conversation
    - french: French conversation
    - spanish: Spanish conversation
    - chinese: Chinese conversation
 
-5. transfer_reason_category: Choose ONE from the transfer taxonomy below when the call had a human-transfer signal or transfer-like handoff wording, or null when there was no transfer signal.
+7. transfer_reason_category: Choose ONE from the transfer taxonomy below when the call had a human-transfer signal or transfer-like handoff wording, or null when there was no transfer signal.
    Valid categories: {transfer_categories}
 
    Transfer taxonomy decision rules, adapted from VSA:
@@ -889,16 +1017,18 @@ Do not use call_purpose for transfer root cause. Example: an order tool failure 
    4. If the caller stated an order/reservation/delivery/menu intent before asking for a human, do not use cold_opt_out. Classify the root cause from the later flow.
    5. If the caller only says hello, checks whether they are connected, gives an unclear request, or never gives a usable intent before the transfer signal, use ambiguous_intent_user_gave_up rather than other.
 
-6. transfer_agent_was_at_fault: boolean or null.
+8. transfer_agent_was_at_fault: boolean or null.
 {transfer_fault_defaults}
 
-Return ONLY a valid JSON object with these exact keys: ended_reason, call_purpose, user_satisfaction, language, transfer_reason_category, transfer_agent_was_at_fault.
-The call_purpose value must be an array of strings. ended_reason, user_satisfaction, language, and transfer_reason_category must be strings or null as specified. transfer_agent_was_at_fault must be boolean or null.
+Return ONLY a valid JSON object with these exact keys: ended_reason, call_purpose, call_quality_label, call_quality_reason_codes, user_satisfaction, language, transfer_reason_category, transfer_agent_was_at_fault.
+The call_purpose and call_quality_reason_codes values must be arrays of strings. ended_reason, call_quality_label, user_satisfaction, language, and transfer_reason_category must be strings or null as specified. transfer_agent_was_at_fault must be boolean or null.
 
 Example format:
 {{
   "ended_reason": "customer_ended",
   "call_purpose": ["menu_info", "ordering"],
+  "call_quality_label": "legitimate_restaurant_call",
+  "call_quality_reason_codes": ["restaurant_intent_present", "order_or_reservation_intent"],
   "user_satisfaction": "positive",
   "language": "english",
   "transfer_reason_category": null,
@@ -925,7 +1055,10 @@ Example format:
                         "role": "user",
                         "content": (
                             "Live call_transfer purpose captured during the call: "
-                            f"{transfer_purpose_context}\n\nTranscript:\n{conversation_text}"
+                            f"{transfer_purpose_context}\n"
+                            f"Live close_reason captured at call end: {close_reason_context}\n"
+                            f"Call duration seconds: {duration_context}\n\n"
+                            f"Transcript:\n{conversation_text}"
                         ),
                     },
                 ],
@@ -958,6 +1091,10 @@ Example format:
             "transfer_agent_was_at_fault": _normalize_transfer_agent_was_at_fault(
                 result.get("transfer_agent_was_at_fault")
             ),
+            "call_quality_label": CallQualityLabel(result["call_quality_label"]),
+            "call_quality_reason_codes": _normalize_call_quality_reason_codes(
+                result["call_quality_reason_codes"]
+            ),
         }
 
         # Log the extracted analytics
@@ -977,6 +1114,12 @@ Example format:
         )
         logger.info(
             f"[Live Kit Analytics]  Transfer agent was at fault: {analytics['transfer_agent_was_at_fault']}"
+        )
+        logger.info(
+            f"[Live Kit Analytics]  Call quality label: {analytics['call_quality_label'].value}"
+        )
+        logger.info(
+            f"[Live Kit Analytics]  Call quality reason codes: {analytics['call_quality_reason_codes']}"
         )
 
         return analytics

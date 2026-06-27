@@ -85,6 +85,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 - **Catering menu items API.** Added project-scoped listing and item update
   endpoints for catering menu rows, backed by an async repository and explicit
   catering menu DTO/schema types. -> `docs/records/2026-06-23-catering-menu-items-api.md`
+- **Voice call-quality post-call classifier.** Extended the existing LiveKit post-call analytics pass with a backend-only call-quality classifier for legitimate restaurant calls, robot/prerecorded calls, promotional sales outreach, spam/scam, prank/abusive calls, and unclear calls. Silence timeouts and misdials stay represented by `ended_reason`; supporting quality reason codes are persisted on `phone_calls` and included in `ConversationEvaluationRequested.call_metadata`. Migration: `f2fc2243cb69`. -> `docs/state/architecture.md`
 
 ## 2026-06-22
 

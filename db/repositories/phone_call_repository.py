@@ -5,7 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from db.tables import PhoneCall
-from db.tables.types import CallEndedReason, CallLanguage, CallPurpose, UserSatisfaction
+from db.tables.types import (
+    CallEndedReason,
+    CallLanguage,
+    CallPurpose,
+    CallQualityLabel,
+    UserSatisfaction,
+)
 from utils.log import logger
 
 
@@ -50,6 +56,8 @@ class PhoneCallRepositoryAsync:
         language: CallLanguage | None = None,
         transfer_reason_category: str | None = None,
         transfer_agent_was_at_fault: bool | None = None,
+        call_quality_label: CallQualityLabel | None = None,
+        call_quality_reason_codes: list[str] | None = None,
     ) -> PhoneCall:
         """
         Create a new phone call record.
@@ -69,6 +77,8 @@ class PhoneCallRepositoryAsync:
             language: Language used in the call
             transfer_reason_category: Retrospective reason the call was transferred
             transfer_agent_was_at_fault: Whether the transfer was caused by agent fault
+            call_quality_label: Post-call quality/spam classifier label
+            call_quality_reason_codes: Short reason codes supporting the classifier
 
         Returns:
             PhoneCall: The created phone call record
@@ -91,6 +101,8 @@ class PhoneCallRepositoryAsync:
             language=language,
             transfer_reason_category=transfer_reason_category,
             transfer_agent_was_at_fault=transfer_agent_was_at_fault,
+            call_quality_label=call_quality_label,
+            call_quality_reason_codes=call_quality_reason_codes,
         )
 
         self.session.add(phone_call)
@@ -116,6 +128,8 @@ class PhoneCallRepositoryAsync:
         language: CallLanguage | None = None,
         transfer_reason_category: str | None = None,
         transfer_agent_was_at_fault: bool | None = None,
+        call_quality_label: CallQualityLabel | None = None,
+        call_quality_reason_codes: list[str] | None = None,
     ) -> PhoneCall | None:
         """
         Update an existing phone call record by call_id.
@@ -134,6 +148,8 @@ class PhoneCallRepositoryAsync:
             language: Language used in the call
             transfer_reason_category: Retrospective reason the call was transferred
             transfer_agent_was_at_fault: Whether the transfer was caused by agent fault
+            call_quality_label: Post-call quality/spam classifier label
+            call_quality_reason_codes: Short reason codes supporting the classifier
 
         Returns:
             PhoneCall | None: The updated phone call record if found, None otherwise
@@ -178,6 +194,10 @@ class PhoneCallRepositoryAsync:
                 phone_call.transfer_reason_category = transfer_reason_category
             if transfer_agent_was_at_fault is not None:
                 phone_call.transfer_agent_was_at_fault = transfer_agent_was_at_fault
+            if call_quality_label is not None:
+                phone_call.call_quality_label = call_quality_label
+            if call_quality_reason_codes is not None:
+                phone_call.call_quality_reason_codes = call_quality_reason_codes
 
             await self.session.flush()
 
@@ -213,6 +233,8 @@ class PhoneCallRepository:
         language: CallLanguage | None = None,
         transfer_reason_category: str | None = None,
         transfer_agent_was_at_fault: bool | None = None,
+        call_quality_label: CallQualityLabel | None = None,
+        call_quality_reason_codes: list[str] | None = None,
     ) -> PhoneCall:
         """
         Create a new phone call record (sync version).
@@ -232,6 +254,8 @@ class PhoneCallRepository:
             language: Language used in the call
             transfer_reason_category: Retrospective reason the call was transferred
             transfer_agent_was_at_fault: Whether the transfer was caused by agent fault
+            call_quality_label: Post-call quality/spam classifier label
+            call_quality_reason_codes: Short reason codes supporting the classifier
 
         Returns:
             PhoneCall: The created phone call record
@@ -255,6 +279,8 @@ class PhoneCallRepository:
                 language=language,
                 transfer_reason_category=transfer_reason_category,
                 transfer_agent_was_at_fault=transfer_agent_was_at_fault,
+                call_quality_label=call_quality_label,
+                call_quality_reason_codes=call_quality_reason_codes,
             )
 
             self.session.add(phone_call)

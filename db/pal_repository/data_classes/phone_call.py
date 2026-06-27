@@ -33,4 +33,6 @@ class PhoneCallData:
     language: str | None = None
     transfer_reason_category: str | None = None
     transfer_agent_was_at_fault: bool | None = None
+    call_quality_label: str | None = None
+    call_quality_reason_codes: tuple[str, ...] = field(default_factory=tuple)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

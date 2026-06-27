@@ -538,6 +538,8 @@ async def end_voice_call(
             analytics = await _call_analytics_with_retry(
                 conversation_history,
                 transfer_purpose=conversation.transfer_purpose,
+                close_reason=close_reason,
+                duration_seconds=duration_seconds,
             )
             if analytics:
                 logger.info(
@@ -557,6 +559,10 @@ async def end_voice_call(
                             "transfer_agent_was_at_fault": analytics[
                                 "transfer_agent_was_at_fault"
                             ],
+                            "call_quality_label": analytics["call_quality_label"].value,
+                            "call_quality_reason_codes": analytics[
+                                "call_quality_reason_codes"
+                            ],
                         },
                     },
                 )
@@ -571,7 +577,10 @@ async def end_voice_call(
         logger.warning(
             f"[end_voice_call] Using default analytics for conversation_id: {conversation_id}"
         )
-        analytics = _get_default_analytics()
+        analytics = _get_default_analytics(
+            close_reason=close_reason,
+            conversation_history=conversation_history,
+        )
 
     # Override ended_reason if call was transferred to human
     # This takes precedence over LLM-extracted analytics
@@ -661,6 +670,8 @@ async def end_voice_call(
             language=analytics["language"],
             transfer_reason_category=analytics["transfer_reason_category"],
             transfer_agent_was_at_fault=analytics["transfer_agent_was_at_fault"],
+            call_quality_label=analytics["call_quality_label"],
+            call_quality_reason_codes=analytics["call_quality_reason_codes"],
             **latency_avgs,
         )
 
@@ -893,7 +904,7 @@ async def end_voice_call(
             duration_seconds=duration_seconds,
             close_reason=close_reason,
             conversation_history=conversation_history,
-            analytics=analytics if conversation_history else None,
+            analytics=analytics,
             channel=channel_for_event,
             is_test=is_test_for_event,
             customer_converted=customer_converted_for_event,
@@ -926,6 +937,8 @@ async def end_voice_call(
 async def _call_analytics_with_retry(
     conversation_history: list[dict],
     transfer_purpose: str | None = None,
+    close_reason: str | None = None,
+    duration_seconds: float | None = None,
     max_retries: int = 3,
     base_delay: float = 1.0,
 ) -> dict | None:
@@ -934,6 +947,8 @@ async def _call_analytics_with_retry(
     Args:
         conversation_history: List of message dicts with 'role' and 'content'
         transfer_purpose: Live routing purpose from call_transfer, if captured
+        close_reason: Voice provider close reason captured at end of call
+        duration_seconds: Call duration in seconds
         max_retries: Maximum number of retry attempts
         base_delay: Base delay in seconds for exponential backoff
 
@@ -947,6 +962,8 @@ async def _call_analytics_with_retry(
             result = await extract_call_analytics(
                 conversation_history,
                 transfer_purpose=transfer_purpose,
+                close_reason=close_reason,
+                duration_seconds=duration_seconds,
             )
 
             # Validate the response
@@ -988,9 +1005,13 @@ def _validate_analytics_response(result: dict) -> bool:
         CallEndedReason,
         CallLanguage,
         CallPurpose,
+        CallQualityLabel,
         UserSatisfaction,
     )
-    from services.analytics_service._utils import TRANSFER_REASON_CATEGORIES
+    from services.analytics_service._utils import (
+        TRANSFER_REASON_CATEGORIES,
+        _normalize_call_quality_reason_codes,
+    )
 
     try:
         # Check required keys exist
@@ -1001,6 +1022,8 @@ def _validate_analytics_response(result: dict) -> bool:
             "language",
             "transfer_reason_category",
             "transfer_agent_was_at_fault",
+            "call_quality_label",
+            "call_quality_reason_codes",
         ]
         if not all(key in result for key in required_keys):
             logger.warning(
@@ -1020,6 +1043,8 @@ def _validate_analytics_response(result: dict) -> bool:
         _ = [CallPurpose(p) for p in result["call_purpose"]]
         _ = UserSatisfaction(result["user_satisfaction"])
         _ = CallLanguage(result["language"])
+        _ = CallQualityLabel(result["call_quality_label"])
+        _ = _normalize_call_quality_reason_codes(result["call_quality_reason_codes"])
 
         transfer_reason_category = result["transfer_reason_category"]
         transfer_agent_was_at_fault = result["transfer_agent_was_at_fault"]
@@ -1066,8 +1091,10 @@ def _normalize_analytics_to_enums(result: dict) -> dict:
         CallEndedReason,
         CallLanguage,
         CallPurpose,
+        CallQualityLabel,
         UserSatisfaction,
     )
+    from services.analytics_service._utils import _normalize_call_quality_reason_codes
 
     return {
         "ended_reason": CallEndedReason(result["ended_reason"]),
@@ -1076,10 +1103,17 @@ def _normalize_analytics_to_enums(result: dict) -> dict:
         "language": CallLanguage(result["language"]),
         "transfer_reason_category": result["transfer_reason_category"],
         "transfer_agent_was_at_fault": result["transfer_agent_was_at_fault"],
+        "call_quality_label": CallQualityLabel(result["call_quality_label"]),
+        "call_quality_reason_codes": _normalize_call_quality_reason_codes(
+            result["call_quality_reason_codes"]
+        ),
     }
 
 
-def _get_default_analytics() -> dict:
+def _get_default_analytics(
+    close_reason: str | None = None,
+    conversation_history: list[dict] | None = None,
+) -> dict:
     """Return safe default analytics when LLM extraction fails.
 
     Returns:
@@ -1089,16 +1123,33 @@ def _get_default_analytics() -> dict:
         CallEndedReason,
         CallLanguage,
         CallPurpose,
+        CallQualityLabel,
         UserSatisfaction,
     )
 
+    ended_reason = CallEndedReason(
+        _LIVEKIT_CLOSE_REASON_MAP.get(close_reason or "", CallEndedReason.other.value)
+    )
+    call_quality_label = CallQualityLabel.unknown_unclear
+    call_quality_reason_codes: list[str] = []
+    if ended_reason is CallEndedReason.silence_timeout:
+        call_quality_reason_codes = ["live_close_reason_silence_timeout"]
+        has_user_text = any(
+            msg.get("role") == "user" and _extract_transcript_text(msg).strip()
+            for msg in conversation_history or []
+        )
+        if conversation_history is not None and not has_user_text:
+            call_quality_reason_codes.append("no_user_audio")
+
     return {
-        "ended_reason": CallEndedReason.other,
+        "ended_reason": ended_reason,
         "call_purpose": [CallPurpose.other],
         "user_satisfaction": UserSatisfaction.neutral,
         "language": CallLanguage.english,
         "transfer_reason_category": None,
         "transfer_agent_was_at_fault": None,
+        "call_quality_label": call_quality_label,
+        "call_quality_reason_codes": call_quality_reason_codes,
     }
 
 
@@ -1376,6 +1427,14 @@ async def _publish_livekit_evaluation_event(
                 "language": (analytics["language"].value if analytics else "english"),
                 "user_satisfaction": (
                     analytics["user_satisfaction"].value if analytics else "neutral"
+                ),
+                "call_quality_label": (
+                    analytics["call_quality_label"].value
+                    if analytics
+                    else "unknown_unclear"
+                ),
+                "call_quality_reason_codes": (
+                    analytics["call_quality_reason_codes"] if analytics else []
                 ),
                 "customer_converted": (
                     str(customer_converted) if customer_converted else None

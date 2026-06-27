@@ -14,7 +14,13 @@ from sqlalchemy.exc import MultipleResultsFound, SQLAlchemyError
 from db.pal_repository.data_classes.phone_call import PhoneCallData
 from db.pal_repository.phone_call import PhoneCallRepository
 from db.tables.phonecalls import PhoneCall
-from db.tables.types import CallEndedReason, CallLanguage, CallPurpose, UserSatisfaction
+from db.tables.types import (
+    CallEndedReason,
+    CallLanguage,
+    CallPurpose,
+    CallQualityLabel,
+    UserSatisfaction,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -61,6 +67,8 @@ def sample_orm_row(
     row.language = CallLanguage.english
     row.transfer_reason_category = "tool_failure_order"
     row.transfer_agent_was_at_fault = True
+    row.call_quality_label = CallQualityLabel.legitimate_restaurant_call
+    row.call_quality_reason_codes = ["restaurant_intent_present"]
     row.created_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
     return row
 
@@ -95,6 +103,8 @@ class TestGetByCallId:
         assert dto.language == "english"
         assert dto.transfer_reason_category == "tool_failure_order"
         assert dto.transfer_agent_was_at_fault is True
+        assert dto.call_quality_label == "legitimate_restaurant_call"
+        assert dto.call_quality_reason_codes == ("restaurant_intent_present",)
 
     @pytest.mark.asyncio
     async def test_returns_none_when_not_found(
@@ -162,6 +172,8 @@ class TestCreate:
             ended_reason="customer_ended",
             transfer_reason_category="cold_opt_out",
             transfer_agent_was_at_fault=False,
+            call_quality_label="promotional_sales",
+            call_quality_reason_codes=("sales_or_vendor_outreach",),
         )
 
         dto = await repo.create(input_dto)
@@ -173,7 +185,12 @@ class TestCreate:
         assert dto.ended_reason == "customer_ended"
         assert dto.transfer_reason_category == "cold_opt_out"
         assert dto.transfer_agent_was_at_fault is False
+        assert dto.call_quality_label == "promotional_sales"
+        assert dto.call_quality_reason_codes == ("sales_or_vendor_outreach",)
         mock_session.add.assert_called_once()
+        added = mock_session.add.call_args.args[0]
+        assert added.call_quality_label is CallQualityLabel.promotional_sales
+        assert added.call_quality_reason_codes == ["sales_or_vendor_outreach"]
         mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -220,9 +237,11 @@ class TestUpdate:
             call_id="call-abc-123",
             conversation_id=uuid.uuid4(),
             duration=99.9,
-            ended_reason="silence_timeout",
+            ended_reason="customer_ended",
             transfer_reason_category="failed_transfer_attempt",
             transfer_agent_was_at_fault=True,
+            call_quality_label="prank_or_abusive",
+            call_quality_reason_codes=("abusive_or_prank_language",),
         )
 
         dto = await repo.update(call_id="call-abc-123", record=update_dto)
@@ -231,6 +250,8 @@ class TestUpdate:
         assert dto.call_id == "call-abc-123"
         assert sample_orm_row.transfer_reason_category == "failed_transfer_attempt"
         assert sample_orm_row.transfer_agent_was_at_fault is True
+        assert sample_orm_row.call_quality_label is CallQualityLabel.prank_or_abusive
+        assert sample_orm_row.call_quality_reason_codes == ["abusive_or_prank_language"]
         mock_session.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -294,6 +315,10 @@ class TestUpdate:
         assert sample_orm_row.duration == 100.0
         # ended_reason was NOT overwritten (still the original value from fixture)
         assert sample_orm_row.ended_reason == CallEndedReason.customer_ended
+        assert (
+            sample_orm_row.call_quality_label
+            is CallQualityLabel.legitimate_restaurant_call
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -320,3 +345,4 @@ class TestDTOImmutability:
             conversation_id=uuid.uuid4(),
         )
         assert dto.call_purpose == ()
+        assert dto.call_quality_reason_codes == ()

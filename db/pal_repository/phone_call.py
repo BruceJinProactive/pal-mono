@@ -6,7 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.pal_repository.data_classes.phone_call import PhoneCallData
 from db.tables.phonecalls import PhoneCall
-from db.tables.types import CallEndedReason, CallLanguage, CallPurpose, UserSatisfaction
+from db.tables.types import (
+    CallEndedReason,
+    CallLanguage,
+    CallPurpose,
+    CallQualityLabel,
+    UserSatisfaction,
+)
 from utils.log import logger
 
 
@@ -36,6 +42,14 @@ def _to_data(row: PhoneCall) -> PhoneCallData:
         language=row.language.value if row.language else None,
         transfer_reason_category=row.transfer_reason_category,
         transfer_agent_was_at_fault=row.transfer_agent_was_at_fault,
+        call_quality_label=(
+            row.call_quality_label.value if row.call_quality_label else None
+        ),
+        call_quality_reason_codes=(
+            tuple(row.call_quality_reason_codes)
+            if row.call_quality_reason_codes
+            else ()
+        ),
         created_at=row.created_at,
     )
 
@@ -100,6 +114,16 @@ class PhoneCallRepository:
                 language=CallLanguage(record.language) if record.language else None,
                 transfer_reason_category=record.transfer_reason_category,
                 transfer_agent_was_at_fault=record.transfer_agent_was_at_fault,
+                call_quality_label=(
+                    CallQualityLabel(record.call_quality_label)
+                    if record.call_quality_label
+                    else None
+                ),
+                call_quality_reason_codes=(
+                    list(record.call_quality_reason_codes)
+                    if record.call_quality_reason_codes
+                    else None
+                ),
             )
             self.session.add(phone_call)
             await self.session.commit()
@@ -156,6 +180,14 @@ class PhoneCallRepository:
             if record.transfer_agent_was_at_fault is not None:
                 phone_call.transfer_agent_was_at_fault = (
                     record.transfer_agent_was_at_fault
+                )
+            if record.call_quality_label is not None:
+                phone_call.call_quality_label = CallQualityLabel(
+                    record.call_quality_label
+                )
+            if record.call_quality_reason_codes:
+                phone_call.call_quality_reason_codes = list(
+                    record.call_quality_reason_codes
                 )
 
             await self.session.commit()
