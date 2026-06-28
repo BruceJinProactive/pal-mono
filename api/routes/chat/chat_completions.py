@@ -18,7 +18,11 @@ from api.routes.chat.chat import chat_router
 from api.schemas.chat.message import AuthorType, Message, Metadata, TextObject
 from api.schemas.error.error import ErrorResponse
 from db.tables.types import Channel
-from services.message_service import get_chat_response_stream
+from services.message_service import (
+    BRIDGE_STREAM_EVENT_KIND_TOOL_OUTPUT,
+    BRIDGE_STREAM_EVENT_TYPE,
+    get_chat_response_stream,
+)
 from services.message_service._phone_routing import (
     resolve_broker_from_sip_provider,
     resolve_outbound_tn,
@@ -31,6 +35,19 @@ from utils.request_context import RequestContext
 _CHAT_COMPLETIONS_TURN_BRIDGE_METRIC = "chat.completions.turn.bridge"
 _CHAT_COMPLETIONS_TURN_BRIDGE_DURATION_METRIC = "chat.completions.turn.bridge.duration"
 AGENT_STREAM_ERROR_EVENT_TYPE = "agent_stream_error"
+
+# The service returned no async iterator, so the bridge had nothing to consume.
+_BRIDGE_EMPTY_NO_STREAM_REASON = "empty_no_stream"
+# The iterator existed but completed before yielding any stream chunks.
+_BRIDGE_EMPTY_NO_CHUNKS_REASON = "empty_no_chunks"
+# Chunks arrived, but every text delta was blank or whitespace.
+_BRIDGE_EMPTY_ONLY_EMPTY_CHUNKS_REASON = "empty_only_empty_chunks"
+# The stream only produced tool artifacts, with no user-facing text to bridge.
+_BRIDGE_EMPTY_TOOL_ONLY_REASON = "empty_tool_only"
+# Text arrived, but URL filtering stripped it before it could be spoken.
+_BRIDGE_EMPTY_URL_FILTERED_REASON = "empty_url_filtered"
+# The stream was textless, but no more specific empty-output case matched.
+_BRIDGE_EMPTY_UNKNOWN_REASON = "empty_unknown"
 
 
 # Request model with FastAPI validation
@@ -66,6 +83,53 @@ def _record_chat_turn_bridge_outcome(
         _CHAT_COMPLETIONS_TURN_BRIDGE_DURATION_METRIC,
         start_time,
         attributes=attributes,
+    )
+
+
+def _resolve_empty_bridge_reason(
+    *,
+    chunk_count: int,
+    raw_text_chunk_count: int,
+    filtered_text_chunk_count: int,
+    url_filtered_content_seen: bool,
+    tool_output_seen: bool,
+) -> str:
+    """Classify a textless bridge completion into a dashboard-visible reason."""
+    if url_filtered_content_seen:
+        return _BRIDGE_EMPTY_URL_FILTERED_REASON
+    if tool_output_seen:
+        return _BRIDGE_EMPTY_TOOL_ONLY_REASON
+    if chunk_count == 0:
+        return _BRIDGE_EMPTY_NO_CHUNKS_REASON
+    if raw_text_chunk_count == 0 and filtered_text_chunk_count == 0:
+        return _BRIDGE_EMPTY_ONLY_EMPTY_CHUNKS_REASON
+    return _BRIDGE_EMPTY_UNKNOWN_REASON
+
+
+def _log_empty_bridge_output(
+    *,
+    reason: str,
+    framework: str,
+    chunk_count: int,
+    raw_text_chunk_count: int,
+    filtered_text_chunk_count: int,
+    url_filtered_content_seen: bool,
+    tool_output_seen: bool,
+    error_chunk_seen: bool,
+) -> None:
+    """Log non-PII diagnostics for textless voice bridge completions."""
+    logger.warning(
+        "[ChatCompletions] Empty voice bridge output",
+        extra={
+            "reason": reason,
+            "framework": framework,
+            "chunk_count": chunk_count,
+            "raw_text_chunk_count": raw_text_chunk_count,
+            "filtered_text_chunk_count": filtered_text_chunk_count,
+            "url_filtered_content_seen": url_filtered_content_seen,
+            "tool_output_seen": tool_output_seen,
+            "error_chunk_seen": error_chunk_seen,
+        },
     )
 
 
@@ -396,7 +460,9 @@ Instructions:
             else:
                 # Replace placeholder if found, otherwise append payment link
                 if "[INSERT_URL_HERE]" in summary_content:
-                    summary_content = summary_content.replace("[INSERT_URL_HERE]", first_url)  # type: ignore
+                    summary_content = summary_content.replace(
+                        "[INSERT_URL_HERE]", first_url
+                    )  # type: ignore
                 else:
                     summary_content = summary_content + f"\n{first_url}"  # type: ignore
 
@@ -540,6 +606,7 @@ async def chat_completions_agno(
                 bridge_had_content = False
                 bridge_error_chunk_seen = False
                 bridge_agent_stream_error_seen = False
+                bridge_tool_output_seen = False
                 bridge_framework = "unknown"
 
                 def record_bridge_outcome(outcome: str, reason: str) -> None:
@@ -562,7 +629,8 @@ async def chat_completions_agno(
                     sms_item_recap: str | None = None
 
                     def collect_stream_event(event: Dict[str, Any]) -> None:
-                        nonlocal bridge_agent_stream_error_seen, bridge_framework, sms_item_recap
+                        nonlocal bridge_agent_stream_error_seen, bridge_framework
+                        nonlocal bridge_tool_output_seen, sms_item_recap
                         if event.get("type") == "bridge_framework":
                             framework = event.get("framework")
                             if isinstance(framework, str) and framework:
@@ -570,6 +638,13 @@ async def chat_completions_agno(
                             return
                         if event.get("type") == AGENT_STREAM_ERROR_EVENT_TYPE:
                             bridge_agent_stream_error_seen = True
+                            return
+                        if event.get("type") == BRIDGE_STREAM_EVENT_TYPE:
+                            bridge_tool_output_seen = (
+                                bridge_tool_output_seen
+                                or event.get("kind")
+                                == BRIDGE_STREAM_EVENT_KIND_TOOL_OUTPUT
+                            )
                             return
                         if event.get("type") != "sms_followup" or sms_item_recap:
                             return
@@ -598,6 +673,9 @@ async def chat_completions_agno(
                     collected_content = []
                     if response_stream:
                         chunk_count = 0
+                        raw_text_chunk_count = 0
+                        filtered_text_chunk_count = 0
+                        url_filtered_content_seen = False
                         url_filter = create_url_filter()
                         record_duration(
                             "chat.streaming.first_chunk.wait",
@@ -615,6 +693,8 @@ async def chat_completions_agno(
                                 if choices
                                 else ""
                             )
+                            if content.strip():
+                                raw_text_chunk_count += 1
                             finish_reason = (
                                 choices[0].get("finish_reason") if choices else None
                             )
@@ -626,11 +706,18 @@ async def chat_completions_agno(
 
                             # Apply URL filtering to this chunk
                             filtered_content = url_filter.filter_content(content)
+                            if (
+                                content.strip()
+                                and filtered_content is not None
+                                and not filtered_content.strip()
+                            ):
+                                url_filtered_content_seen = True
 
                             # Yield chunk immediately if content passes filter
                             if filtered_content is not None:
                                 if filtered_content.strip():
                                     bridge_had_content = True
+                                    filtered_text_chunk_count += 1
                                 if (
                                     chunk_data.get("choices")
                                     and len(chunk_data["choices"]) > 0
@@ -691,10 +778,37 @@ async def chat_completions_agno(
                         elif bridge_had_content:
                             record_bridge_outcome("success", "completed")
                         else:
-                            record_bridge_outcome("failure", "empty_output")
+                            empty_reason = _resolve_empty_bridge_reason(
+                                chunk_count=chunk_count,
+                                raw_text_chunk_count=raw_text_chunk_count,
+                                filtered_text_chunk_count=filtered_text_chunk_count,
+                                url_filtered_content_seen=url_filtered_content_seen,
+                                tool_output_seen=bridge_tool_output_seen,
+                            )
+                            _log_empty_bridge_output(
+                                reason=empty_reason,
+                                framework=bridge_framework,
+                                chunk_count=chunk_count,
+                                raw_text_chunk_count=raw_text_chunk_count,
+                                filtered_text_chunk_count=filtered_text_chunk_count,
+                                url_filtered_content_seen=url_filtered_content_seen,
+                                tool_output_seen=bridge_tool_output_seen,
+                                error_chunk_seen=bridge_error_chunk_seen,
+                            )
+                            record_bridge_outcome("failure", empty_reason)
                         yield "data: [DONE]\n\n"
                     else:
-                        record_bridge_outcome("failure", "empty_output")
+                        _log_empty_bridge_output(
+                            reason=_BRIDGE_EMPTY_NO_STREAM_REASON,
+                            framework=bridge_framework,
+                            chunk_count=0,
+                            raw_text_chunk_count=0,
+                            filtered_text_chunk_count=0,
+                            url_filtered_content_seen=False,
+                            tool_output_seen=bridge_tool_output_seen,
+                            error_chunk_seen=bridge_error_chunk_seen,
+                        )
+                        record_bridge_outcome("failure", _BRIDGE_EMPTY_NO_STREAM_REASON)
 
                 except asyncio.CancelledError:
                     logger.debug(

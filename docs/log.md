@@ -6,6 +6,13 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-27
 
+- **Chat bridge empty-output reason split.** Voice chat bridge outcomes now
+  split the former generic `failure/empty_output` bucket into
+  `empty_no_stream`, `empty_no_chunks`, `empty_only_empty_chunks`,
+  `empty_url_filtered`, `empty_tool_only`, and `empty_unknown`, with non-PII
+  diagnostics and pal-agents tool-artifact observations so Grafana can show the
+  dominant empty-output cause. -> `docs/records/2026-06-27-chat-bridge-empty-output-reasons.md`
+
 - **Call-quality analytics report.** Added a reports API distribution for
   post-call quality labels, including legitimate vs non-legitimate totals and
   per-label call counts for Manage App spam-call analytics.

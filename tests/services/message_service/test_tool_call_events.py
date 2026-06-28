@@ -478,7 +478,13 @@ async def test_streaming_tool_call_events_attached_to_message(
         message_repo.saved_message_body["tool_calls"][1]["payload"]["tool_name"]
         == "place_order"
     )
-    assert collected_sms_events == [sms_followup_event]
+    assert collected_sms_events == [
+        sms_followup_event,
+        {
+            "type": _implementation.BRIDGE_STREAM_EVENT_TYPE,
+            "kind": _implementation.BRIDGE_STREAM_EVENT_KIND_TOOL_OUTPUT,
+        },
+    ]
     assert message_repo.saved_conversation_id is not None
     assert len(append_calls) == 3
     assert (

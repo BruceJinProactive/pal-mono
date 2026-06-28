@@ -42,6 +42,10 @@ from api.routes.chat.chat_completions import (
 )
 from api.schemas.chat.message import Broker
 from db.tables.types import Channel
+from services.message_service import (
+    BRIDGE_STREAM_EVENT_KIND_TOOL_OUTPUT,
+    BRIDGE_STREAM_EVENT_TYPE,
+)
 from utils.request_context import RequestContext
 
 
@@ -1166,6 +1170,249 @@ class TestChatCompletionsAgno:
             "agent_stream_error",
             request_context.request_time,
             "pal_agents",
+        )
+
+    @pytest.mark.asyncio
+    async def test_stream_records_empty_no_stream_metric(self) -> None:
+        """Split a missing response stream out from generic empty output."""
+        request = ChatCompletionRequest(
+            model='{"sender_identifier": "+15551234567", "recipient_identifier": "+15557654321"}',
+            message="Hello",
+            stream=True,
+        )
+        session = AsyncMock()
+        request_context = RequestContext()
+
+        with (
+            patch(
+                "api.routes.chat.chat_completions.get_chat_response_stream",
+                return_value=None,
+            ),
+            patch(
+                "api.routes.chat.chat_completions._record_chat_turn_bridge_outcome"
+            ) as mock_record,
+        ):
+            response = await chat_completions_agno(
+                request, request.model, request_context, session
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        mock_record.assert_called_once_with(
+            "failure",
+            "empty_no_stream",
+            request_context.request_time,
+            "unknown",
+        )
+
+    @pytest.mark.asyncio
+    async def test_stream_records_empty_no_chunks_metric(self) -> None:
+        """Split an existing stream that yields no chunks from generic empty output."""
+        request = ChatCompletionRequest(
+            model='{"sender_identifier": "+15551234567", "recipient_identifier": "+15557654321"}',
+            message="Hello",
+            stream=True,
+        )
+        session = AsyncMock()
+        request_context = RequestContext()
+
+        async def mock_stream() -> AsyncGenerator[SimpleNamespace, None]:
+            if False:
+                yield _make_stream_chunk("unreachable")
+
+        with (
+            patch(
+                "api.routes.chat.chat_completions.get_chat_response_stream",
+                return_value=mock_stream(),
+            ),
+            patch("api.routes.chat.chat_completions._send_urls_via_sms"),
+            patch(
+                "api.routes.chat.chat_completions._record_chat_turn_bridge_outcome"
+            ) as mock_record,
+        ):
+            response = await chat_completions_agno(
+                request, request.model, request_context, session
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        mock_record.assert_called_once_with(
+            "failure",
+            "empty_no_chunks",
+            request_context.request_time,
+            "unknown",
+        )
+
+    @pytest.mark.asyncio
+    async def test_stream_records_empty_only_empty_chunks_metric(self) -> None:
+        """Split streams with only empty text chunks from generic empty output."""
+        request = ChatCompletionRequest(
+            model='{"sender_identifier": "+15551234567", "recipient_identifier": "+15557654321"}',
+            message="Hello",
+            stream=True,
+        )
+        session = AsyncMock()
+        request_context = RequestContext()
+
+        async def mock_stream() -> AsyncGenerator[SimpleNamespace, None]:
+            yield _make_stream_chunk("")
+
+        with (
+            patch(
+                "api.routes.chat.chat_completions.get_chat_response_stream",
+                return_value=mock_stream(),
+            ),
+            patch("api.routes.chat.chat_completions._send_urls_via_sms"),
+            patch(
+                "api.routes.chat.chat_completions._record_chat_turn_bridge_outcome"
+            ) as mock_record,
+        ):
+            response = await chat_completions_agno(
+                request, request.model, request_context, session
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        mock_record.assert_called_once_with(
+            "failure",
+            "empty_only_empty_chunks",
+            request_context.request_time,
+            "unknown",
+        )
+
+    @pytest.mark.asyncio
+    async def test_stream_records_empty_url_filtered_metric(self) -> None:
+        """Split raw text that URL filtering removes from generic empty output."""
+        request = ChatCompletionRequest(
+            model='{"sender_identifier": "+15551234567", "recipient_identifier": "+15557654321"}',
+            message="Hello",
+            stream=True,
+        )
+        session = AsyncMock()
+        request_context = RequestContext()
+
+        async def mock_stream() -> AsyncGenerator[SimpleNamespace, None]:
+            yield _make_stream_chunk("https://pay.example.com/invoice")
+
+        with (
+            patch(
+                "api.routes.chat.chat_completions.get_chat_response_stream",
+                return_value=mock_stream(),
+            ),
+            patch("api.routes.chat.chat_completions._send_urls_via_sms"),
+            patch(
+                "api.routes.chat.chat_completions._record_chat_turn_bridge_outcome"
+            ) as mock_record,
+        ):
+            response = await chat_completions_agno(
+                request, request.model, request_context, session
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        mock_record.assert_called_once_with(
+            "failure",
+            "empty_url_filtered",
+            request_context.request_time,
+            "unknown",
+        )
+
+    @pytest.mark.asyncio
+    async def test_stream_records_empty_tool_only_metric(self) -> None:
+        """Split pal-agents tool artifacts with no text from generic empty output."""
+        request = ChatCompletionRequest(
+            model='{"sender_identifier": "+15551234567", "recipient_identifier": "+15557654321"}',
+            message="Hello",
+            stream=True,
+        )
+        session = AsyncMock()
+        request_context = RequestContext()
+
+        async def mock_get_chat_response_stream(
+            *args: Any, **kwargs: Any
+        ) -> AsyncGenerator[SimpleNamespace, None]:
+            event_collector: Callable[[dict[str, Any]], None] = kwargs[
+                "event_collector"
+            ]
+            event_collector(
+                {
+                    "type": BRIDGE_STREAM_EVENT_TYPE,
+                    "kind": BRIDGE_STREAM_EVENT_KIND_TOOL_OUTPUT,
+                }
+            )
+
+            async def mock_stream() -> AsyncGenerator[SimpleNamespace, None]:
+                if False:
+                    yield _make_stream_chunk("unreachable")
+
+            return mock_stream()
+
+        with (
+            patch(
+                "api.routes.chat.chat_completions.get_chat_response_stream",
+                side_effect=mock_get_chat_response_stream,
+            ),
+            patch("api.routes.chat.chat_completions._send_urls_via_sms"),
+            patch(
+                "api.routes.chat.chat_completions._record_chat_turn_bridge_outcome"
+            ) as mock_record,
+        ):
+            response = await chat_completions_agno(
+                request, request.model, request_context, session
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        mock_record.assert_called_once_with(
+            "failure",
+            "empty_tool_only",
+            request_context.request_time,
+            "unknown",
+        )
+
+    @pytest.mark.asyncio
+    async def test_stream_records_empty_unknown_metric(self) -> None:
+        """Use the fallback bucket for textless streams with no clearer cause."""
+        request = ChatCompletionRequest(
+            model='{"sender_identifier": "+15551234567", "recipient_identifier": "+15557654321"}',
+            message="Hello",
+            stream=True,
+        )
+        session = AsyncMock()
+        request_context = RequestContext()
+
+        class _NoContentFilter:
+            def filter_content(self, _content: str) -> None:
+                return None
+
+        async def mock_stream() -> AsyncGenerator[SimpleNamespace, None]:
+            yield _make_stream_chunk("non-url assistant text")
+
+        with (
+            patch(
+                "api.routes.chat.chat_completions.get_chat_response_stream",
+                return_value=mock_stream(),
+            ),
+            patch(
+                "api.routes.chat.chat_completions.create_url_filter",
+                return_value=_NoContentFilter(),
+            ),
+            patch("api.routes.chat.chat_completions._send_urls_via_sms"),
+            patch(
+                "api.routes.chat.chat_completions._record_chat_turn_bridge_outcome"
+            ) as mock_record,
+        ):
+            response = await chat_completions_agno(
+                request, request.model, request_context, session
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        mock_record.assert_called_once_with(
+            "failure",
+            "empty_unknown",
+            request_context.request_time,
+            "unknown",
         )
 
     @pytest.mark.asyncio

@@ -58,6 +58,10 @@ from utils.request_context import RequestContext
 from . import _utils
 from ._phone_routing import resolve_broker_from_sip_provider, resolve_outbound_tn
 from ._store_status import compute_store_status
+from ._stream_events import (
+    BRIDGE_STREAM_EVENT_KIND_TOOL_OUTPUT,
+    BRIDGE_STREAM_EVENT_TYPE,
+)
 from ._tracing import langfuse_message_span
 
 _background_tasks: set[asyncio.Task[None]] = set()
@@ -100,8 +104,22 @@ def _is_persistable_tool_event(event: dict[str, Any]) -> bool:
     return event.get("type") not in {
         "sms_followup",
         AGENT_STREAM_ERROR_EVENT_TYPE,
+        BRIDGE_STREAM_EVENT_TYPE,
         RAW_TOOL_RESULT_EVENT_TYPE,
     }
+
+
+def _collect_bridge_stream_event(
+    event_collector: Callable[[dict[str, Any]], None] | None,
+    kind: str,
+) -> None:
+    """Emit a best-effort bridge-only stream event without affecting agent output."""
+    if event_collector is None:
+        return
+    try:
+        event_collector({"type": BRIDGE_STREAM_EVENT_TYPE, "kind": kind})
+    except Exception:
+        logger.exception("Bridge stream event collector failed; continuing stream")
 
 
 def _handle_tool_result_cache_write_done(task: asyncio.Task[None]) -> None:
@@ -1419,6 +1437,10 @@ async def get_chat_response_stream(
                                     and chunk.transfer_purpose
                                     and not transfer_purpose_captured  # Only persist once
                                 ):
+                                    _collect_bridge_stream_event(
+                                        event_collector,
+                                        BRIDGE_STREAM_EVENT_KIND_TOOL_OUTPUT,
+                                    )
                                     transfer_purpose_captured = chunk.transfer_purpose
                                     try:
                                         conversation = (
@@ -1459,6 +1481,10 @@ async def get_chat_response_stream(
                                     hasattr(chunk, "order_details")
                                     and chunk.order_details
                                 ):
+                                    _collect_bridge_stream_event(
+                                        event_collector,
+                                        BRIDGE_STREAM_EVENT_KIND_TOOL_OUTPUT,
+                                    )
                                     order_details = chunk.order_details
                                     logger.info(
                                         "[order_details]Order details received in streaming response",
@@ -1505,6 +1531,10 @@ async def get_chat_response_stream(
                                     hasattr(chunk, "reservation_details")
                                     and chunk.reservation_details
                                 ):
+                                    _collect_bridge_stream_event(
+                                        event_collector,
+                                        BRIDGE_STREAM_EVENT_KIND_TOOL_OUTPUT,
+                                    )
                                     rd = chunk.reservation_details
                                     logger.info(
                                         "[reservation_details]Reservation/waitlist received in stream",
@@ -1535,6 +1565,10 @@ async def get_chat_response_stream(
                                     hasattr(chunk, "catering_details")
                                     and chunk.catering_details  # type: ignore[reportAttributeAccessIssue]
                                 ):
+                                    _collect_bridge_stream_event(
+                                        event_collector,
+                                        BRIDGE_STREAM_EVENT_KIND_TOOL_OUTPUT,
+                                    )
                                     cd = chunk.catering_details  # type: ignore[reportAttributeAccessIssue]
                                     logger.info(
                                         "[catering_details]Catering request received in stream",
@@ -1567,6 +1601,10 @@ async def get_chat_response_stream(
                                         chunk.checkout_request
                                     )  # type: ignore[reportAttributeAccessIssue]
                                 ):
+                                    _collect_bridge_stream_event(
+                                        event_collector,
+                                        BRIDGE_STREAM_EVENT_KIND_TOOL_OUTPUT,
+                                    )
                                     logger.info(
                                         "[ToastCheckout] Checkout request received in stream",
                                         extra={
@@ -1609,6 +1647,11 @@ async def get_chat_response_stream(
                                             persistable_events.append(event)
 
                                     collected_events.extend(persistable_events)
+                                    if persistable_events:
+                                        _collect_bridge_stream_event(
+                                            event_collector,
+                                            BRIDGE_STREAM_EVENT_KIND_TOOL_OUTPUT,
+                                        )
                                     _schedule_tool_result_cache_writes(
                                         request_conversation_id,
                                         chunk_events,
