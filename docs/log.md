@@ -4,6 +4,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-27
+
+- **Call-quality analytics report.** Added a reports API distribution for
+  post-call quality labels, including legitimate vs non-legitimate totals and
+  per-label call counts for Manage App spam-call analytics.
+
 ## 2026-06-25
 
 - **Contract-to-account onboarding manual DocuSign plan rewrite.** Reworked the PRD and implementation plan around the corrected MVP flow: AEs manually create and verify signed DocuSign contracts before Manage App account creation; Manage App submit is the system kickoff for invite send, AE/FDE ownership, contract metadata recording, and Slack/Notion/Folk handoff automation; Admin Console invite onboarding is password setup only. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`, `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`

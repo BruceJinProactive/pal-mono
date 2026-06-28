@@ -19,6 +19,7 @@ from api.schemas.admin.ordering_metrics import (
 from utils.log import logger
 
 from ._utils import (
+    CALL_QUALITY_METADATA_BY_VALUE,
     TRANSFER_REASON_METADATA_BY_KEY,
     _enforce_hierarchy_order,
     process_analytics_data_generic,
@@ -81,6 +82,7 @@ async def get_reports(
             call_info_report,
             conversion_report,
             transfer_reason_report,
+            call_quality_report,
         ) = await asyncio.gather(
             asyncio.to_thread(
                 create_sync_session_and_run,
@@ -130,6 +132,14 @@ async def get_reports(
                 group_by=group_by,
                 filter_by=filter_by,
             ),
+            asyncio.to_thread(
+                create_sync_session_and_run,
+                get_call_quality_distribution,
+                start_date=start_date,
+                end_date=end_date,
+                group_by=group_by,
+                filter_by=filter_by,
+            ),
         )
 
         # Create and return reports
@@ -154,6 +164,10 @@ async def get_reports(
             PerformanceReport(
                 name=AnalyticsReportType.TRANSFER_REASON_DISTRIBUTION.name,
                 data=transfer_reason_report,
+            ),
+            PerformanceReport(
+                name=AnalyticsReportType.CALL_QUALITY_DISTRIBUTION.name,
+                data=call_quality_report,
             ),
         ]
 
@@ -281,6 +295,133 @@ def _to_group_date_key(value: object) -> str:
 def _format_unknown_transfer_reason_label(reason: str) -> str:
     """Format unknown transfer reason keys defensively for report output."""
     return " ".join(word.capitalize() for word in reason.split("_") if word) or reason
+
+
+def _call_quality_label_value(value: object) -> str:
+    """Normalize SQLAlchemy enum or string call-quality labels."""
+    enum_value = getattr(value, "value", value)
+    return str(enum_value)
+
+
+def _is_legitimate_call_quality_label(label: str) -> bool:
+    """Return whether a call-quality label represents a legitimate call."""
+    metadata = CALL_QUALITY_METADATA_BY_VALUE.get(label)
+    return metadata.is_legitimate if metadata else False
+
+
+def _format_unknown_call_quality_label(label: str) -> str:
+    """Format unknown call-quality labels defensively for report output."""
+    return " ".join(word.capitalize() for word in label.split("_") if word) or label
+
+
+def _parse_call_quality_row(
+    row: tuple[object, ...],
+    group_by: list[str],
+) -> tuple[dict[str, object], tuple[str, ...]]:
+    """Parse a call-quality tuple into a report row and group identity."""
+    index = 0
+    report_row: dict[str, object] = {}
+    group_key_parts: list[str] = []
+
+    for group in group_by:
+        if group == "date":
+            date_key = _to_group_date_key(row[index])
+            report_row["date"] = date_key
+            group_key_parts.append(date_key)
+            index += 1
+        elif group == "account_id":
+            account_id = str(row[index])
+            account_name = str(row[index + 1])
+            report_row["account_id"] = account_id
+            report_row["account_name"] = account_name
+            group_key_parts.append(account_id)
+            index += 2
+        elif group == "project_id":
+            project_id = str(row[index])
+            project_name = str(row[index + 1])
+            report_row["project_id"] = project_id
+            report_row["project_name"] = project_name
+            group_key_parts.append(project_id)
+            index += 2
+
+    label = _call_quality_label_value(row[index])
+    count = _to_int(row[index + 1])
+    label_metadata = CALL_QUALITY_METADATA_BY_VALUE.get(label)
+
+    report_row.update(
+        {
+            "call_quality_label": label,
+            "label": (
+                label_metadata.label
+                if label_metadata
+                else _format_unknown_call_quality_label(label)
+            ),
+            "description": (
+                label_metadata.description
+                if label_metadata
+                else "Custom call quality label"
+            ),
+            "count": count,
+            "is_legitimate": _is_legitimate_call_quality_label(label),
+        }
+    )
+
+    return report_row, tuple(group_key_parts)
+
+
+def _build_call_quality_rows(
+    data: list[tuple[object, ...]],
+    group_by: list[str],
+) -> list[dict[str, object]]:
+    """Build call-quality rows with percentages within each group."""
+    parsed_rows: list[tuple[dict[str, object], tuple[str, ...]]] = []
+    group_totals: dict[tuple[str, ...], int] = {}
+
+    for row in data:
+        report_row, group_key = _parse_call_quality_row(row, group_by)
+        count = _to_int(report_row["count"])
+        group_totals[group_key] = group_totals.get(group_key, 0) + count
+        parsed_rows.append((report_row, group_key))
+
+    output_rows: list[dict[str, object]] = []
+    for report_row, group_key in parsed_rows:
+        count = _to_int(report_row["count"])
+        report_row["percentage"] = _calculate_percentage(
+            count,
+            group_totals.get(group_key, 0),
+        )
+        output_rows.append(report_row)
+
+    output_rows.sort(
+        key=lambda report_row: (
+            tuple(str(report_row.get(group, "")) for group in group_by),
+            -_to_int(report_row["count"]),
+            str(report_row["call_quality_label"]),
+        )
+    )
+    return output_rows
+
+
+def _build_call_quality_totals(
+    rows: list[dict[str, object]],
+) -> dict[str, object]:
+    """Build summary totals from ungrouped call-quality rows."""
+    total_count = sum(_to_int(row["count"]) for row in rows)
+    legitimate_count = sum(
+        _to_int(row["count"]) for row in rows if bool(row["is_legitimate"])
+    )
+    non_legitimate_count = total_count - legitimate_count
+
+    return {
+        "total_call_quality_calls": total_count,
+        "total_legitimate_calls": legitimate_count,
+        "total_non_legitimate_calls": non_legitimate_count,
+        "legitimate_rate": _calculate_percentage(legitimate_count, total_count),
+        "non_legitimate_rate": _calculate_percentage(
+            non_legitimate_count,
+            total_count,
+        ),
+    }
 
 
 def _parse_transfer_reason_row(
@@ -580,6 +721,85 @@ def get_transfer_reason_distribution(
 
     except Exception as e:
         logger.error(f"Error generating transfer reason distribution: {e}")
+        raise
+
+
+def get_call_quality_distribution(
+    session: Session,
+    start_date: datetime,
+    end_date: datetime,
+    group_by: list[str] | None = None,
+    filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+) -> dict[str, object]:
+    """
+    Get post-call quality classifier label counts.
+
+    Returns:
+        dict: {
+            'call_quality_distribution': [...],
+            'totals': {
+                'call_quality_distribution': [...],
+                'total_call_quality_calls': int,
+                'total_legitimate_calls': int,
+                'total_non_legitimate_calls': int,
+                'legitimate_rate': float | None,
+                'non_legitimate_rate': float | None
+            },
+            'metadata': {...}
+        }
+    """
+    try:
+        if group_by is None:
+            group_by = []
+
+        ordered_group_by = _enforce_hierarchy_order(group_by)
+        analytics_repo = db.AnalyticsRepository(session)
+
+        if ordered_group_by:
+            call_quality_data, call_quality_totals_data = (
+                analytics_repo.get_call_quality_distribution(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=ordered_group_by,
+                    filter_by=filter_by,
+                ),
+                analytics_repo.get_call_quality_distribution(
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=[],
+                    filter_by=filter_by,
+                ),
+            )
+        else:
+            call_quality_data = analytics_repo.get_call_quality_distribution(
+                start_date=start_date,
+                end_date=end_date,
+                group_by=[],
+                filter_by=filter_by,
+            )
+            call_quality_totals_data = call_quality_data
+
+        call_quality_rows = _build_call_quality_rows(
+            call_quality_data,
+            ordered_group_by,
+        )
+        total_rows = _build_call_quality_rows(call_quality_totals_data, [])
+        totals = _build_call_quality_totals(total_rows)
+
+        return {
+            "call_quality_distribution": call_quality_rows,
+            "totals": {
+                **totals,
+                "call_quality_distribution": total_rows,
+            },
+            "metadata": {
+                "group_by": ordered_group_by,
+                "filter_by": filter_by or {},
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error generating call quality distribution: {e}")
         raise
 
 

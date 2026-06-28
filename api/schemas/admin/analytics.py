@@ -203,6 +203,11 @@ class AnalyticsReportType:
         metrics_config={},
     )
 
+    CALL_QUALITY_DISTRIBUTION = ReportConfig(
+        name="Call Quality Distribution",
+        metrics_config={},
+    )
+
 
 class PerformanceReport(BaseModel):
     name: str

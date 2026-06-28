@@ -926,6 +926,99 @@ class AnalyticsRepository:
             logger.error(f"Error getting transfer reason distribution: {e}")
             return []
 
+    def get_call_quality_distribution(
+        self,
+        start_date: datetime.datetime,
+        end_date: datetime.datetime,
+        group_by: list[str] | None = None,
+        filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+    ) -> list[tuple[object, ...]]:
+        """
+        Get post-call quality classifier label counts.
+
+        Returns:
+            list[tuple]: (group_fields..., call_quality_label, count)
+        """
+        try:
+            start_time = time.time()
+            select_fields, group_fields = self._build_group_fields(group_by)
+
+            select_fields.extend(
+                [
+                    PhoneCall.call_quality_label.label("call_quality_label"),
+                    func.count(PhoneCall.id).label("count"),
+                ]
+            )
+
+            if filter_by and "account_id" in filter_by:
+                account_filter = filter_by["account_id"]
+
+                if isinstance(account_filter, list):
+                    account_condition = User.account_id.in_(account_filter)
+                else:
+                    account_condition = User.account_id == account_filter
+
+                query = (
+                    select(*select_fields)
+                    .select_from(PhoneCall)
+                    .join(Conversation, PhoneCall.conversation_id == Conversation.id)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .where(
+                        PhoneCall.created_at.between(start_date, end_date),
+                        PhoneCall.call_quality_label.isnot(None),
+                        ~Conversation.is_test,
+                        account_condition,
+                    )
+                )
+            else:
+                query = (
+                    select(*select_fields)
+                    .select_from(PhoneCall)
+                    .join(Conversation, PhoneCall.conversation_id == Conversation.id)
+                    .join(User, Conversation.user_id == User.id)
+                    .join(Account, User.account_id == Account.id)
+                    .where(
+                        PhoneCall.created_at.between(start_date, end_date),
+                        PhoneCall.call_quality_label.isnot(None),
+                        ~Conversation.is_test,
+                    )
+                )
+
+            if group_by and "project_id" in group_by:
+                query = query.join(Project, Conversation.project_id == Project.id)
+
+            if filter_by and "project_id" in filter_by:
+                project_id = filter_by["project_id"]
+                if isinstance(project_id, list):
+                    query = query.where(Conversation.project_id.in_(project_id))
+                else:
+                    query = query.where(Conversation.project_id == project_id)
+
+            group_fields_with_label = [
+                *group_fields,
+                PhoneCall.call_quality_label,
+            ]
+            query = query.group_by(*group_fields_with_label).order_by(
+                func.count(PhoneCall.id).desc(),
+                PhoneCall.call_quality_label.asc(),
+            )
+
+            result = self.session.execute(query)
+            rows = [tuple(row) for row in result.all()]
+
+            elapsed = time.time() - start_time
+            logger.info(
+                "AnalyticsRepository: Call quality distribution query executed "
+                f"in {elapsed:.3f}s, returned {len(rows)} rows"
+            )
+            return rows
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error getting call quality distribution: {e}")
+            return []
+
     def get_conversion_summary(
         self,
         start_date: datetime.datetime,

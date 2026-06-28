@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 from sqlalchemy.exc import SQLAlchemyError
 
 from db.repositories.analytics_repository import AnalyticsRepository
+from db.tables.types import CallQualityLabel
 
 
 def _make_session() -> MagicMock:
@@ -134,6 +135,78 @@ class TestGetTransferReasonDistribution:
         repo = AnalyticsRepository(session)
 
         result = repo.get_transfer_reason_distribution(
+            start_date=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_date=datetime(2026, 4, 30, tzinfo=timezone.utc),
+            group_by=[],
+            filter_by={
+                "account_id": uuid.uuid4(),
+                "project_id": uuid.uuid4(),
+            },
+        )
+
+        assert result == []
+        session.execute.assert_called_once()
+
+
+class TestGetCallQualityDistribution:
+    """Tests for call quality distribution aggregation."""
+
+    def test_returns_call_quality_rows(self) -> None:
+        session = _make_session()
+        session.execute.return_value.all.return_value = [
+            (CallQualityLabel.promotional_sales, 4),
+            (CallQualityLabel.legitimate_restaurant_call, 10),
+        ]
+        repo = AnalyticsRepository(session)
+
+        result = repo.get_call_quality_distribution(
+            start_date=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_date=datetime(2026, 4, 30, tzinfo=timezone.utc),
+            group_by=[],
+            filter_by={"account_id": uuid.uuid4()},
+        )
+
+        assert result == [
+            (CallQualityLabel.promotional_sales, 4),
+            (CallQualityLabel.legitimate_restaurant_call, 10),
+        ]
+        session.execute.assert_called_once()
+
+    def test_rolls_back_on_sqlalchemy_error(self) -> None:
+        session = MagicMock()
+        session.execute.side_effect = SQLAlchemyError("boom")
+        repo = AnalyticsRepository(session)
+
+        result = repo.get_call_quality_distribution(
+            start_date=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_date=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+
+        assert result == []
+        session.rollback.assert_called_once()
+
+    def test_supports_account_list_and_project_list_filters(self) -> None:
+        session = _make_session()
+        repo = AnalyticsRepository(session)
+
+        result = repo.get_call_quality_distribution(
+            start_date=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_date=datetime(2026, 4, 30, tzinfo=timezone.utc),
+            group_by=["project_id"],
+            filter_by={
+                "account_id": [uuid.uuid4(), uuid.uuid4()],
+                "project_id": [uuid.uuid4(), uuid.uuid4()],
+            },
+        )
+
+        assert result == []
+        session.execute.assert_called_once()
+
+    def test_supports_project_id_scalar_filter(self) -> None:
+        session = _make_session()
+        repo = AnalyticsRepository(session)
+
+        result = repo.get_call_quality_distribution(
             start_date=datetime(2026, 4, 1, tzinfo=timezone.utc),
             end_date=datetime(2026, 4, 30, tzinfo=timezone.utc),
             group_by=[],

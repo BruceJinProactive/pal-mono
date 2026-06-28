@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from db.tables.types import CallQualityLabel
 from utils.log import logger
 
 
@@ -11,6 +12,19 @@ class TransferReasonMetadata:
     description: str
     prompt_description: str
     agent_fault_default: bool | None
+
+
+@dataclass(frozen=True)
+class CallQualityMetadata:
+    key: str
+    label: str
+    description: str
+    prompt_description: str
+    is_legitimate: bool
+
+    @property
+    def value(self) -> str:
+        return self.key
 
 
 TRANSFER_REASON_METADATA: tuple[TransferReasonMetadata, ...] = (
@@ -161,57 +175,73 @@ TRANSFER_REASON_METADATA_BY_KEY: dict[str, TransferReasonMetadata] = {
 }
 
 
-@dataclass(frozen=True)
-class CallQualityMetadata:
-    key: str
-    prompt_description: str
-
-
 CALL_QUALITY_LABEL_METADATA: tuple[CallQualityMetadata, ...] = (
     CallQualityMetadata(
-        key="legitimate_restaurant_call",
+        key=CallQualityLabel.legitimate_restaurant_call.value,
+        label="Legit calls",
+        description="Real restaurant or customer-service intent",
         prompt_description=(
             "A real caller asking about the restaurant, menu, ordering, "
             "reservations, hours, delivery, complaints, or another legitimate "
             "restaurant/customer-service matter."
         ),
+        is_legitimate=True,
     ),
     CallQualityMetadata(
-        key="robot_prerecorded",
+        key=CallQualityLabel.robot_prerecorded.value,
+        label="Robot / prerecorded",
+        description="Automated, synthetic, IVR, or prerecorded caller",
         prompt_description=(
             "Prerecorded, synthetic, IVR, auto-dialer, or bot-like speech that "
             "is not trying to have a normal restaurant conversation."
         ),
+        is_legitimate=False,
     ),
     CallQualityMetadata(
-        key="promotional_sales",
+        key=CallQualityLabel.promotional_sales.value,
+        label="Promotional sales",
+        description="Vendor, marketing, supplier, recruiting, or sales outreach",
         prompt_description=(
             "Sales, marketing, vendor, recruiting, supplier, SEO, financing, "
             "or other promotional outreach to the restaurant rather than a "
             "customer checking on restaurant services."
         ),
+        is_legitimate=False,
     ),
     CallQualityMetadata(
-        key="spam_scam",
+        key=CallQualityLabel.spam_scam.value,
+        label="Spam / scam",
+        description="Suspicious, fraudulent, phishing, or spam-like caller",
         prompt_description=(
             "Likely scam, phishing, fraud, spoofing, suspicious lead-gen, or "
             "other spam unrelated to legitimate restaurant operations."
         ),
+        is_legitimate=False,
     ),
     CallQualityMetadata(
-        key="prank_or_abusive",
+        key=CallQualityLabel.prank_or_abusive.value,
+        label="Prank or abusive",
+        description="Prank, harassment, abusive, or intentionally disruptive call",
         prompt_description=(
             "Prank, harassment, abusive language, or intentionally disruptive "
             "call with no legitimate restaurant purpose."
         ),
+        is_legitimate=False,
     ),
     CallQualityMetadata(
-        key="unknown_unclear",
+        key=CallQualityLabel.unknown_unclear.value,
+        label="Unknown / unclear",
+        description="Silence, no usable caller speech, or insufficient evidence",
         prompt_description=(
             "Insufficient evidence to classify the call quality with confidence."
         ),
+        is_legitimate=False,
     ),
 )
+CALL_QUALITY_METADATA: tuple[CallQualityMetadata, ...] = CALL_QUALITY_LABEL_METADATA
+CALL_QUALITY_METADATA_BY_VALUE: dict[str, CallQualityMetadata] = {
+    metadata.value: metadata for metadata in CALL_QUALITY_METADATA
+}
 CALL_QUALITY_REASON_CODES: tuple[str, ...] = (
     "restaurant_intent_present",
     "caller_asked_restaurant_question",
