@@ -1678,6 +1678,7 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_creates_missing_comp
     assert result.folk_contact_id is None
     assert result.updated_company is True
     assert result.updated_contact is False
+    assert folk_client.company_list_max_pages == [None]
     assert result.skipped_reason is None
     assert folk_client.company_creates == [{"name": "Acme Inc."}]
     assert folk_client.company_updates[0][0] == "folk-company-created"
@@ -1740,6 +1741,7 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_links_existing_compa
     assert result.folk_company_id == "folk-company-existing"
     assert result.updated_company is True
     assert result.updated_contact is False
+    assert folk_client.company_list_max_pages == [None]
     assert folk_client.company_creates == []
     assert folk_client.company_updates[0][0] == "folk-company-existing"
     onboarding_repo.update_folk_ids.assert_called_once_with(
@@ -3457,11 +3459,17 @@ def _install_fake_boto3(monkeypatch: Any, fake_client: MagicMock) -> Any:
 class _FakeFolkContractAcceptanceClient:
     def __init__(self, *, companies: list[dict[str, Any]] | None = None) -> None:
         self.companies = companies or []
+        self.company_list_max_pages: list[int | None] = []
         self.company_creates: list[dict[str, Any]] = []
         self.company_updates: list[tuple[str, dict[str, Any]]] = []
         self.contact_updates: list[tuple[str, dict[str, Any]]] = []
 
-    async def list_companies(self) -> list[dict[str, Any]]:
+    async def list_companies(
+        self,
+        *,
+        max_pages: int | None = None,
+    ) -> list[dict[str, Any]]:
+        self.company_list_max_pages.append(max_pages)
         return self.companies
 
     async def create_company(
@@ -3489,7 +3497,11 @@ class _FakeFolkContractAcceptanceClient:
 
 
 class _FailingFolkContractAcceptanceClient:
-    async def list_companies(self) -> list[dict[str, Any]]:
+    async def list_companies(
+        self,
+        *,
+        max_pages: int | None = None,
+    ) -> list[dict[str, Any]]:
         raise RuntimeError("Folk unavailable")
 
     async def create_company(

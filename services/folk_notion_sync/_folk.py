@@ -56,11 +56,17 @@ class FolkClient:
         )
         return _data_object(data)
 
-    async def list_companies(self) -> list[dict[str, Any]]:
+    async def list_companies(
+        self,
+        *,
+        max_pages: int | None = None,
+    ) -> list[dict[str, Any]]:
         url = f"{self._settings.folk_base_url}/v1/companies?limit=100"
         items: list[dict[str, Any]] = []
+        pages_read = 0
         while url:
             data = await self._request("GET", url)
+            pages_read += 1
             body = data.get("data", {})
             if not isinstance(body, dict):
                 raise ValueError("Folk list_companies payload missing object `data`")
@@ -73,6 +79,8 @@ class FolkClient:
                 if isinstance(pagination, dict) and pagination.get("nextLink")
                 else ""
             )
+            if max_pages is not None and pages_read >= max_pages:
+                break
         return items
 
     async def update_contact(

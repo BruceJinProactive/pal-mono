@@ -373,6 +373,45 @@ async def test_folk_client_lists_paginated_companies(
 
 
 @pytest.mark.asyncio
+async def test_folk_client_can_limit_company_listing_pages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_secret_stub(monkeypatch)
+    monkeypatch.delitem(sys.modules, "services.folk_notion_sync._folk", raising=False)
+    folk_module: Any = importlib.import_module("services.folk_notion_sync._folk")
+    folk_client_class: Any = folk_module.FolkClient
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "items": [{"id": "com_1", "name": "Acme Inc."}],
+                    "pagination": {
+                        "nextLink": "https://api.folk.app/v1/companies?page=2"
+                    },
+                }
+            },
+            request=request,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        folk_client = folk_client_class(
+            _settings(),
+            api_key="folk-test-key",
+            http_client=client,
+        )
+
+        companies = await folk_client.list_companies(max_pages=1)
+
+    assert companies == [{"id": "com_1", "name": "Acme Inc."}]
+    assert len(requests) == 1
+    assert requests[0].url.path == "/v1/companies"
+
+
+@pytest.mark.asyncio
 async def test_folk_client_retries_retryable_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

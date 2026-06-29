@@ -4,6 +4,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-29
+
+- **Client onboarding Folk lookup bound.** Folk company retry recovery now checks only the first company-list page before creating a company, avoiding brittle full-table pagination while still covering the likely retry case where a just-created company exists but its ID was not persisted locally.
+
 ## 2026-06-27
 
 - **Chat bridge empty-output reason split.** Voice chat bridge outcomes now

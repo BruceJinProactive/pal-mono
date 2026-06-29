@@ -102,7 +102,11 @@ class FolkContractAcceptanceClient(Protocol):
         payload: dict[str, Any],
     ) -> dict[str, Any]: ...
 
-    async def list_companies(self) -> list[dict[str, Any]]: ...
+    async def list_companies(
+        self,
+        *,
+        max_pages: int | None = None,
+    ) -> list[dict[str, Any]]: ...
 
     async def update_company(
         self,
