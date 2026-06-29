@@ -38,6 +38,21 @@ class SubscriptionPlanRepository:
             logger.error(f"Error retrieving subscription plan: {e}")
             return None
 
+    def get_subscription_plan_by_id_including_inactive(
+        self, plan_id: uuid.UUID
+    ) -> Optional[SubscriptionPlan]:
+        """Get a subscription plan by ID, including retired/inactive plans."""
+        try:
+            return (
+                self.session.query(SubscriptionPlan)
+                .filter(SubscriptionPlan.id == plan_id)
+                .first()
+            )
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error retrieving subscription plan: {e}")
+            return None
+
     def get_subscription_plans(
         self, hidden: Optional[bool] = None
     ) -> List[SubscriptionPlan]:

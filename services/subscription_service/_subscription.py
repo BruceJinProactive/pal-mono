@@ -1947,8 +1947,10 @@ def switch_subscription_plan(
         raise ValueError("Can only switch plans for active subscriptions")
 
     subscription_plan_repository = SubscriptionPlanRepository(session)
-    current_plan = subscription_plan_repository.get_subscription_plan_by_id(
-        current_subscription.subscription_plan_id
+    current_plan = (
+        subscription_plan_repository.get_subscription_plan_by_id_including_inactive(
+            current_subscription.subscription_plan_id
+        )
     )
     new_plan = subscription_plan_repository.get_subscription_plan_by_id(new_plan_id)
 
@@ -2105,8 +2107,10 @@ def switch_project_subscription_plan(
     if not active_project_sub.subscription_plan_id:
         raise ValueError("Project subscription has no plan ID")
 
-    current_plan = subscription_plan_repository.get_subscription_plan_by_id(
-        active_project_sub.subscription_plan_id
+    current_plan = (
+        subscription_plan_repository.get_subscription_plan_by_id_including_inactive(
+            active_project_sub.subscription_plan_id
+        )
     )
     new_plan = subscription_plan_repository.get_subscription_plan_by_id(new_plan_id)
 

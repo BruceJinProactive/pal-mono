@@ -129,6 +129,40 @@ class TestSubscriptionPlanManagement:
         result = plan_repo.get_subscription_plan_by_id(uuid.uuid4())
         assert result is None
 
+    def test_get_plan_by_id_including_inactive_returns_retired_plan(
+        self,
+        plan_repo: SubscriptionPlanRepository,
+        mock_session: MagicMock,
+        sample_plan: MagicMock,
+    ) -> None:
+        """Historical subscriptions can still resolve their retired plan."""
+        sample_plan.active = False
+        mock_session.query.return_value.filter.return_value.first.return_value = (
+            sample_plan
+        )
+
+        result = plan_repo.get_subscription_plan_by_id_including_inactive(
+            sample_plan.id
+        )
+
+        assert result == sample_plan
+        filter_args = mock_session.query.return_value.filter.call_args.args
+        assert len(filter_args) == 1
+        assert "active" not in str(filter_args[0])
+
+    def test_get_plan_by_id_including_inactive_returns_none_on_error(
+        self,
+        plan_repo: SubscriptionPlanRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """DB errors still roll back and return None."""
+        mock_session.query.side_effect = SQLAlchemyError("connection lost")
+
+        result = plan_repo.get_subscription_plan_by_id_including_inactive(uuid.uuid4())
+
+        assert result is None
+        mock_session.rollback.assert_called_once()
+
     def test_get_plans_filtered_by_hidden(self, plan_repo, mock_session, sample_plan):
         """Public vs internal pricing plans."""
         mock_q = mock_session.query.return_value.filter.return_value

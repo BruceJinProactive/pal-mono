@@ -1,6 +1,6 @@
 # Billing System & Stripe Integration
 
-> **Last updated:** 2026-06-05
+> **Last updated:** 2026-06-29
 
 ## Overview
 
@@ -229,14 +229,15 @@ Has a unique constraint ensuring one active subscription per project.
 **Path**: `services/subscription_service/_subscription.py:switch_subscription_plan()`
 
 1. Validate current subscription is active
-2. Validate new plan exists and is active
-3. For each project subscription:
+2. Resolve the current plan, including retired/inactive plans, so customers can move away from legacy plans
+3. Validate new plan exists and is active
+4. For each project subscription:
    - Create new Stripe product with new plan name
    - Create new prices with new plan's quotas/overage rates
    - **Swap** existing subscription items to new prices (in-place update)
    - Update `ProjectSubscription` with new price IDs
-4. Create new `AccountSubscription` version with new `subscription_plan_id`
-5. Proration handled by Stripe (`proration_behavior="create_prorations"`)
+5. Create new `AccountSubscription` version with new `subscription_plan_id`
+6. Proration handled by Stripe (`proration_behavior="create_prorations"`)
 
 **Why in-place swapping?** Prevents double-counting usage during plan changes by updating the existing subscription item rather than removing and adding.
 
