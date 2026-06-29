@@ -6,7 +6,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-29
 
-- **Client onboarding Folk lookup bound.** Folk company retry recovery now checks only the first company-list page before creating a company, avoiding brittle full-table pagination while still covering the likely retry case where a just-created company exists but its ID was not persisted locally.
+- **Client onboarding Folk creation avoids brittle pagination.** Onboarding Folk sync no longer scans paginated company lists before creation; when no `folk_company_id` is linked, the flow creates a company, persists the returned ID, and then updates that company with contract acceptance metadata.
 
 ## 2026-06-27
 

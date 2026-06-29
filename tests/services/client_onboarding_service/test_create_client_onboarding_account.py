@@ -1678,7 +1678,6 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_creates_missing_comp
     assert result.folk_contact_id is None
     assert result.updated_company is True
     assert result.updated_contact is False
-    assert folk_client.company_list_max_pages == [None]
     assert result.skipped_reason is None
     assert folk_client.company_creates == [{"name": "Acme Inc."}]
     assert folk_client.company_updates[0][0] == "folk-company-created"
@@ -1705,66 +1704,6 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_creates_missing_comp
         "folk_contract_acceptance_synced",
     ]
     assert session.commit.call_count == 2
-
-
-def test_sync_client_onboarding_contract_acceptance_to_folk_links_existing_company(
-    mocker: Any,
-) -> None:
-    session = MagicMock()
-    lifecycle = _signed_lifecycle()
-    lifecycle.folk_company_id = None
-    lifecycle.folk_contact_id = None
-    job = MagicMock()
-    job.id = UUID("cccccccc-dddd-eeee-ffff-000000000000")
-    onboarding_repo = mocker.patch.object(
-        svc, "ClientOnboardingRepository"
-    ).return_value
-    onboarding_repo.get_by_id.return_value = lifecycle
-    onboarding_repo.upsert_sync_job.return_value = job
-    folk_client = _FakeFolkContractAcceptanceClient(
-        companies=[{"id": "folk-company-existing", "name": "  acme   inc.  "}],
-    )
-
-    def update_folk_ids(*args: object, **kwargs: object) -> MagicMock:
-        lifecycle.folk_company_id = kwargs["folk_company_id"]
-        lifecycle.folk_contact_id = kwargs["folk_contact_id"]
-        return lifecycle
-
-    onboarding_repo.update_folk_ids.side_effect = update_folk_ids
-
-    result = svc.sync_client_onboarding_contract_acceptance_to_folk(
-        session,
-        LIFECYCLE_ID,
-        folk_client=folk_client,
-    )
-
-    assert result.folk_company_id == "folk-company-existing"
-    assert result.updated_company is True
-    assert result.updated_contact is False
-    assert folk_client.company_list_max_pages == [None]
-    assert folk_client.company_creates == []
-    assert folk_client.company_updates[0][0] == "folk-company-existing"
-    onboarding_repo.update_folk_ids.assert_called_once_with(
-        LIFECYCLE_ID,
-        folk_company_id="folk-company-existing",
-        folk_contact_id=None,
-    )
-    onboarding_repo.mark_sync_job_completed.assert_called_once_with(
-        job.id,
-        result_payload={
-            "updated_company": True,
-            "updated_contact": False,
-            "created_company": False,
-        },
-    )
-    activity_types = [
-        call.kwargs["activity_type"]
-        for call in onboarding_repo.append_activity.call_args_list
-    ]
-    assert activity_types == [
-        "folk_company_linked",
-        "folk_contract_acceptance_synced",
-    ]
 
 
 def test_sync_client_onboarding_contract_acceptance_to_folk_rejects_missing_lifecycle(
@@ -3457,20 +3396,10 @@ def _install_fake_boto3(monkeypatch: Any, fake_client: MagicMock) -> Any:
 
 
 class _FakeFolkContractAcceptanceClient:
-    def __init__(self, *, companies: list[dict[str, Any]] | None = None) -> None:
-        self.companies = companies or []
-        self.company_list_max_pages: list[int | None] = []
+    def __init__(self) -> None:
         self.company_creates: list[dict[str, Any]] = []
         self.company_updates: list[tuple[str, dict[str, Any]]] = []
         self.contact_updates: list[tuple[str, dict[str, Any]]] = []
-
-    async def list_companies(
-        self,
-        *,
-        max_pages: int | None = None,
-    ) -> list[dict[str, Any]]:
-        self.company_list_max_pages.append(max_pages)
-        return self.companies
 
     async def create_company(
         self,
@@ -3497,13 +3426,6 @@ class _FakeFolkContractAcceptanceClient:
 
 
 class _FailingFolkContractAcceptanceClient:
-    async def list_companies(
-        self,
-        *,
-        max_pages: int | None = None,
-    ) -> list[dict[str, Any]]:
-        raise RuntimeError("Folk unavailable")
-
     async def create_company(
         self,
         payload: dict[str, Any],
