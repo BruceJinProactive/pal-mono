@@ -189,6 +189,31 @@ class TestParseDiningOptions:
         assert len(opts) == 1
         assert opts[0].guid == "ddd"
 
+    def test_tolerates_null_and_missing_optional_fields(self) -> None:
+        raw = _dining_options_json(
+            [
+                {"guid": "aaa", "name": "Restaurant", "behavior": None},
+                {"guid": "bbb", "name": "Counter"},
+            ]
+        )
+
+        opts = _parse_dining_options(raw)
+
+        assert [opt.behavior for opt in opts] == ["", ""]
+
+    def test_tolerates_non_string_fields(self) -> None:
+        raw = _dining_options_json(
+            [
+                {"guid": 123, "name": "Counter", "behavior": 456},
+            ]
+        )
+
+        opts = _parse_dining_options(raw)
+
+        assert len(opts) == 1
+        assert opts[0].guid == "123"
+        assert opts[0].behavior == "456"
+
     def test_invalid_json_returns_empty(self) -> None:
         assert _parse_dining_options("not-json") == []
 

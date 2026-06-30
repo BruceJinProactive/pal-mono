@@ -39,12 +39,20 @@ def _parse_dining_options(dining_options_json: str) -> list[DiningOption]:
     for opt in options:
         if not isinstance(opt, dict):
             continue
-        guid = opt.get("guid", "")
-        name = opt.get("name", "")
-        behavior = opt.get("behavior", "")
+        guid = _string_or_empty(opt.get("guid"))
+        name = _string_or_empty(opt.get("name"))
+        behavior = _string_or_empty(opt.get("behavior"))
         if guid and name:
             result.append(DiningOption(guid=guid, name=name, behavior=behavior))
     return result
+
+
+def _string_or_empty(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return str(value)
 
 
 def _suggest_guids(
