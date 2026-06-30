@@ -10,12 +10,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-29
 
+- **Customer RBAC implementation plan.** Added a cross-repo implementation plan for collapsing customer roles to Admin, Store Owner, and Store Member; enforcing store-scoped reads/writes; keeping agent and Operations writes internal; and using store/project payer scope for franchisee-paid billing. -> `docs/plans/rbac/customer-rbac-implementation-plan.md`
 - **Vision structured observations runtime.** Camera config APIs now expose
   `structured_observations_enabled`, and the Vision observation runtime can
   request prompt-defined intermediate `observations` before final state
   selection while keeping existing cameras on strict state-only output by
   default. -> `docs/records/2026-06-30-vision-structured-observations-runtime.md`
-
 - **Superseded: client onboarding Folk creation avoids brittle pagination.** This create-missing-company approach was replaced by update-only Folk sync on 2026-06-30 because active pipeline companies must already exist before account onboarding.
 
 ## 2026-06-28
