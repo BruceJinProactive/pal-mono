@@ -284,40 +284,6 @@ async def test_folk_client_updates_company_and_contact(
 
 
 @pytest.mark.asyncio
-async def test_folk_client_creates_company(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _install_secret_stub(monkeypatch)
-    monkeypatch.delitem(sys.modules, "services.folk_notion_sync._folk", raising=False)
-    folk_module: Any = importlib.import_module("services.folk_notion_sync._folk")
-    folk_client_class: Any = folk_module.FolkClient
-    requests: list[httpx.Request] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
-        return httpx.Response(
-            201,
-            json={"data": {"id": "folk-company-created"}},
-            request=request,
-        )
-
-    payload = {"name": "Acme Inc."}
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        folk_client = folk_client_class(
-            _settings(),
-            api_key="folk-test-key",
-            http_client=client,
-        )
-
-        company = await folk_client.create_company(payload)
-
-    assert company == {"id": "folk-company-created"}
-    assert requests[0].method == "POST"
-    assert requests[0].url.path == "/v1/companies"
-    assert json_body(requests[0]) == payload
-
-
-@pytest.mark.asyncio
 async def test_folk_client_lists_paginated_companies(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

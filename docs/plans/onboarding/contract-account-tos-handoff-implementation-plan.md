@@ -148,7 +148,7 @@ Flow:
    - Contract type: SMB or Enterprise.
    - DocuSign contract/envelope ID or link.
    - FDE owner.
-   - Folk ID, if already known.
+   - Existing Folk company ID, if available.
    - Scoping document link, if already known.
 5. AE submits.
 6. Backend creates or links the account without creating project/agent records.
@@ -170,6 +170,8 @@ Backend responsibilities:
 - Emit activity for `account_created`, manual `docusign_signed`, and
   `invite_sent`.
 - Store the FDE owner for account ownership and handoff messaging.
+- Keep the Folk company reference optional; onboarding updates Folk when linked
+  but does not create sales-pipeline companies.
 - Keep project/agent creation out of this flow.
 
 Data model notes:
@@ -232,8 +234,9 @@ Trigger:
 Database and Folk:
 
 - Save contract acceptance date/time/person to the database.
-- Save DocuSign contract/envelope ID or link to Folk.
-- Save Manage App account ID/name to Folk.
+- Save DocuSign contract/envelope ID or link to the linked Folk company when
+  present.
+- Save Manage App account ID/name to the linked Folk company when present.
 - Save signer, AE owner, FDE owner, and contract type where supported.
 
 Slack:

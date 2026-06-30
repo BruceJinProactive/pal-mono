@@ -188,8 +188,8 @@ Post-MVP adds:
 
 - AE can create a client account from Manage App.
 - AE provides account name, client company name, signer name/email, contract
-  type, DocuSign contract/envelope reference, FDE owner, and optional Folk or
-  scoping doc references.
+  type, DocuSign contract/envelope reference, FDE owner, and optional existing
+  Folk company or scoping doc references.
 - Account is created without automatically creating a project or agent.
 - Logged-in AE is associated as account owner without receiving or accepting a
   customer invite.
@@ -213,7 +213,9 @@ Post-MVP adds:
 After AE submits the Manage App form:
 
 - Save contract acceptance date/time/person to the database.
-- Update Folk with DocuSign contract ID/link and Manage App account ID/name.
+- Update the existing Folk company with DocuSign contract ID/link and Manage
+  App account ID/name when a Folk company is linked. MVP onboarding does not
+  create Folk companies; missing Folk links skip the Folk update.
 - Create the dedicated Slack channel.
 - Add or ping AE and FDE in Slack.
 - Post the contract acceptance handoff message.

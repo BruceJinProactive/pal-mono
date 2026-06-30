@@ -1595,7 +1595,6 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_updates_records(
         result_payload={
             "updated_company": True,
             "updated_contact": True,
-            "created_company": False,
         },
     )
     activity = onboarding_repo.append_activity.call_args.kwargs
@@ -1645,7 +1644,7 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_skips_completed_job(
     session.commit.assert_not_called()
 
 
-def test_sync_client_onboarding_contract_acceptance_to_folk_creates_missing_company(
+def test_sync_client_onboarding_contract_acceptance_to_folk_skips_missing_company_id(
     mocker: Any,
 ) -> None:
     session = MagicMock()
@@ -1660,13 +1659,10 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_creates_missing_comp
     onboarding_repo.get_by_id.return_value = lifecycle
     onboarding_repo.upsert_sync_job.return_value = job
     folk_client = _FakeFolkContractAcceptanceClient()
-
-    def update_folk_ids(*args: object, **kwargs: object) -> MagicMock:
-        lifecycle.folk_company_id = kwargs["folk_company_id"]
-        lifecycle.folk_contact_id = kwargs["folk_contact_id"]
-        return lifecycle
-
-    onboarding_repo.update_folk_ids.side_effect = update_folk_ids
+    handoff_completion = mocker.patch.object(
+        svc,
+        "orchestrate_client_onboarding_handoff_completion",
+    )
 
     result = svc.sync_client_onboarding_contract_acceptance_to_folk(
         session,
@@ -1674,36 +1670,29 @@ def test_sync_client_onboarding_contract_acceptance_to_folk_creates_missing_comp
         folk_client=folk_client,
     )
 
-    assert result.folk_company_id == "folk-company-created"
-    assert result.folk_contact_id is None
-    assert result.updated_company is True
-    assert result.updated_contact is False
-    assert result.skipped_reason is None
-    assert folk_client.company_creates == [{"name": "Acme Inc."}]
-    assert folk_client.company_updates[0][0] == "folk-company-created"
-    onboarding_repo.update_folk_ids.assert_called_once_with(
-        LIFECYCLE_ID,
-        folk_company_id="folk-company-created",
+    skipped_reason = (
+        "No Folk company ID is linked to this lifecycle; skipping Folk update"
+    )
+    assert result == ClientOnboardingFolkSyncResult(
+        lifecycle_id=LIFECYCLE_ID,
+        folk_company_id=None,
         folk_contact_id=None,
+        updated_company=False,
+        updated_contact=False,
+        skipped_reason=skipped_reason,
     )
     onboarding_repo.mark_sync_job_completed.assert_called_once_with(
         job.id,
-        result_payload={
-            "updated_company": True,
-            "updated_contact": False,
-            "created_company": True,
-        },
+        result_payload={"skipped_reason": skipped_reason},
     )
     onboarding_repo.mark_sync_job_failed.assert_not_called()
-    activity_types = [
-        call.kwargs["activity_type"]
-        for call in onboarding_repo.append_activity.call_args_list
-    ]
-    assert activity_types == [
-        "folk_company_created",
-        "folk_contract_acceptance_synced",
-    ]
-    assert session.commit.call_count == 2
+    assert folk_client.company_updates == []
+    assert folk_client.contact_updates == []
+    activity = onboarding_repo.append_activity.call_args.kwargs
+    assert activity["activity_type"] == "folk_contract_acceptance_sync_skipped"
+    assert activity["description"] == skipped_reason
+    session.commit.assert_called_once()
+    handoff_completion.assert_called_once_with(session, LIFECYCLE_ID)
 
 
 def test_sync_client_onboarding_contract_acceptance_to_folk_rejects_missing_lifecycle(
@@ -3397,16 +3386,8 @@ def _install_fake_boto3(monkeypatch: Any, fake_client: MagicMock) -> Any:
 
 class _FakeFolkContractAcceptanceClient:
     def __init__(self) -> None:
-        self.company_creates: list[dict[str, Any]] = []
         self.company_updates: list[tuple[str, dict[str, Any]]] = []
         self.contact_updates: list[tuple[str, dict[str, Any]]] = []
-
-    async def create_company(
-        self,
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        self.company_creates.append(payload)
-        return {"id": "folk-company-created"}
 
     async def update_company(
         self,
@@ -3426,12 +3407,6 @@ class _FakeFolkContractAcceptanceClient:
 
 
 class _FailingFolkContractAcceptanceClient:
-    async def create_company(
-        self,
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        raise RuntimeError("Folk unavailable")
-
     async def update_company(
         self,
         company_id: str,

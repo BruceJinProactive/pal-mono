@@ -4,6 +4,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-06-30
+
+- **Client onboarding Folk sync is update-only.** Manage App client account creation keeps the Folk company ID optional, and post-signature Folk sync updates the linked company when present instead of creating a new Folk company. Missing Folk company links now skip the Folk update while allowing the rest of handoff completion to continue. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`, `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
+
 ## 2026-06-29
 
 - **Vision structured observations runtime.** Camera config APIs now expose
@@ -12,7 +16,7 @@ Chronological record of significant changes. Each entry links to the relevant do
   selection while keeping existing cameras on strict state-only output by
   default. -> `docs/records/2026-06-30-vision-structured-observations-runtime.md`
 
-- **Client onboarding Folk creation avoids brittle pagination.** Onboarding Folk sync no longer scans paginated company lists before creation; when no `folk_company_id` is linked, the flow creates a company, persists the returned ID, and then updates that company with contract acceptance metadata.
+- **Superseded: client onboarding Folk creation avoids brittle pagination.** This create-missing-company approach was replaced by update-only Folk sync on 2026-06-30 because active pipeline companies must already exist before account onboarding.
 
 ## 2026-06-28
 
@@ -47,7 +51,7 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 - **Client onboarding account creation starts manual-signature handoff.** Manage App client account creation now treats AE submission as confirmation that the DocuSign contract was already manually verified, stores the manual `docusign_signed` lifecycle activity, marks the account contract as signed, queues database/Folk/Slack/Notion/Manage App handoff jobs, and best-effort starts the handoff syncs immediately.
 
-- **Client onboarding Folk company creation.** Post-signature onboarding handoff now creates a Folk company when no `folk_company_id` was supplied, stores the returned Folk ID on the lifecycle, and then applies the contract acceptance metadata update to that company instead of skipping Folk sync.
+- **Superseded: client onboarding Folk company creation.** Post-signature onboarding handoff briefly created a Folk company when no `folk_company_id` was supplied; this was replaced by update-only Folk sync on 2026-06-30 because active pipeline companies must already exist before account onboarding.
 
 - **Superseded: client onboarding embedded DocuSign signing URL.** The embedded signing URL path is no longer part of the MVP flow; Admin Console invite onboarding is password setup only, and DocuSign remains manual upstream of Manage App account creation. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 

@@ -45,17 +45,6 @@ class FolkClient:
         )
         return _data_object(data)
 
-    async def create_company(
-        self,
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        data = await self._request(
-            "POST",
-            f"{self._settings.folk_base_url}/v1/companies",
-            json_payload=payload,
-        )
-        return _data_object(data)
-
     async def list_companies(
         self,
         *,
