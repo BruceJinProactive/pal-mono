@@ -23,6 +23,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-25
 
+- **Vision structured observations camera config schema.** Added
+  `vision_camera_configuration.structured_observations_enabled` with default `false`
+  so specific camera configs can later opt into structured observations without
+  changing the default Vision observation contract. Migration:
+  `8b7c6d5e4f3a`. -> `docs/records/2026-06-26-vision-structured-observations-config.md`
+
 - **Contract-to-account onboarding manual DocuSign plan rewrite.** Reworked the PRD and implementation plan around the corrected MVP flow: AEs manually create and verify signed DocuSign contracts before Manage App account creation; Manage App submit is the system kickoff for invite send, AE/FDE ownership, contract metadata recording, and Slack/Notion/Folk handoff automation; Admin Console invite onboarding is password setup only. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`, `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 
 - **Client onboarding account creation starts manual-signature handoff.** Manage App client account creation now treats AE submission as confirmation that the DocuSign contract was already manually verified, stores the manual `docusign_signed` lifecycle activity, marks the account contract as signed, queues database/Folk/Slack/Notion/Manage App handoff jobs, and best-effort starts the handoff syncs immediately.
