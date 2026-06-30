@@ -18,6 +18,13 @@ class EntityObservation(BaseModel):
     definition_type: str | None = Field(
         default=None, description="State definition group that was evaluated"
     )
+    observations: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Use-case-specific structured observations produced before the "
+            "final state selection"
+        ),
+    )
     state: str = Field(..., description="Detected state name")
     state_id: uuid.UUID | None = Field(
         default=None, description="ID of the matched state definition"

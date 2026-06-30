@@ -24,6 +24,7 @@ def _to_data(row: VisionCameraConfiguration) -> VisionCameraConfigurationData:
         processing_interval_seconds=row.processing_interval_seconds,
         reference_images=list(row.reference_images) if row.reference_images else [],
         enabled=row.enabled,
+        structured_observations_enabled=row.structured_observations_enabled,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -47,6 +48,7 @@ class VisionCameraConfigurationRepository:
                 processing_interval_seconds=record.processing_interval_seconds,
                 reference_images=record.reference_images,
                 enabled=record.enabled,
+                structured_observations_enabled=record.structured_observations_enabled,
             )
             self.session.add(row)
             await self.session.commit()

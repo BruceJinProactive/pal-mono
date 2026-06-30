@@ -63,6 +63,23 @@ class TestBuildEntityStateSchema:
         assert schema["properties"]["image_relevant"] == {"type": "boolean"}
         assert schema["additionalProperties"] is False
 
+    def test_observations_schema_when_enabled(self) -> None:
+        entities = [
+            {"name": "cake_case_left", "state_names": ["enough", "not_enough"]},
+        ]
+        schema = _build_entity_state_schema(
+            entities,
+            include_observations=True,
+        )
+
+        entity_schema = schema["properties"]["cake_case_left"]
+        assert entity_schema["required"] == ["observations", "reason", "state"]
+        observations_schema = entity_schema["properties"]["observations"]
+        assert observations_schema["type"] == "object"
+        assert observations_schema["properties"] == {}
+        assert observations_schema["required"] == []
+        assert observations_schema["additionalProperties"] is True
+
     def test_multiple_entities(self):
         entities = [
             {"name": "door_a", "state_names": ["open", "closed"]},
@@ -606,6 +623,7 @@ class TestGenerateObservation:
         mock_config.llm_provider = "azure"
         mock_config.llm_model = "gpt-4o"
         mock_config.reference_images = None
+        mock_config.structured_observations_enabled = True
 
         mock_mapping = MagicMock()
         mock_mapping.entity_id = entity_id
@@ -735,6 +753,7 @@ class TestGenerateObservation:
         mock_config.llm_provider = "azure"
         mock_config.llm_model = "gpt-4o"
         mock_config.reference_images = None
+        mock_config.structured_observations_enabled = True
 
         mock_mapping = MagicMock()
         mock_mapping.entity_id = entity_id
@@ -1075,6 +1094,7 @@ class TestGenerateObservation:
         mock_config.llm_provider = "azure"
         mock_config.llm_model = "gpt-4o"
         mock_config.reference_images = None
+        mock_config.structured_observations_enabled = True
 
         mock_mapping = MagicMock()
         mock_mapping.entity_id = entity_id
@@ -1108,6 +1128,9 @@ class TestGenerateObservation:
             "result": {
                 "oven_1": {
                     "cleanliness": {
+                        "observations": {
+                            "illuminated_indicator_light_count": 1,
+                        },
                         "reason": "The oven indicator light is visibly on.",
                         "state": "on",
                     }
@@ -1203,9 +1226,15 @@ class TestGenerateObservation:
             assert result.entity_observations[0].state == "on"
             assert result.entity_observations[0].state_id == state_id_on
             assert result.entity_observations[0].entity_id == entity_id
+            assert result.entity_observations[0].observations == {
+                "illuminated_indicator_light_count": 1,
+            }
             assert result.raw_llm_response == {
                 "oven_1": {
                     "cleanliness": {
+                        "observations": {
+                            "illuminated_indicator_light_count": 1,
+                        },
                         "reason": "The oven indicator light is visibly on.",
                         "state": "on",
                     }
@@ -1248,6 +1277,8 @@ class TestGenerateObservation:
             assert isinstance(baseline_pixel, tuple)
             assert isinstance(overlay_pixel, tuple)
             assert overlay_pixel != baseline_pixel
+            response_format = analyze_args[4]
+            assert response_format == {"type": "json_object"}
             llm_config = mock_create_monitoring_llm_provider.call_args.args[0]
             assert llm_config.temperature is None
 

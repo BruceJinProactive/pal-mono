@@ -136,6 +136,12 @@ NATIVE_VIDEO_MODELS: set[str] = {
     "gemini-3.1-flash-lite-preview",
 }
 
+_GENERIC_JSON_OBJECT_INSTRUCTION = "\nYou must respond with a valid JSON object."
+_DEFAULT_MONITORING_JSON_INSTRUCTION = (
+    '\nYou must respond with a valid JSON object containing "result" '
+    '(pass/fail/error) and "details" keys.'
+)
+
 
 def supports_native_video(provider: "MonitoringLLMProvider", model: str) -> bool:
     """Check if a provider+model combination supports native video input."""
@@ -737,17 +743,13 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                         )
                     else:
                         # No valid schema found in json_schema format
-                        content_parts.append(
-                            '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
-                        )
+                        content_parts.append(_DEFAULT_MONITORING_JSON_INSTRUCTION)
                         logger.warning(
                             "[Monitoring LLM] json_schema type specified but no schema found, falling back to prompt instructions"
                         )
                 else:
                     # Plain JSON object mode - add instruction to content
-                    content_parts.append(
-                        '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
-                    )
+                    content_parts.append(_GENERIC_JSON_OBJECT_INSTRUCTION)
                     logger.info(
                         "[Monitoring LLM] Using JSON object mode with prompt instructions"
                     )
@@ -761,9 +763,7 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                 )
         else:
             # Default: instruct for standard monitoring response format
-            content_parts.append(
-                '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
-            )
+            content_parts.append(_DEFAULT_MONITORING_JSON_INSTRUCTION)
             logger.info("[Monitoring LLM] Using default JSON response format")
 
         generation_config = GenerateContentConfig(**generation_config_params)
@@ -865,16 +865,12 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                             "[Monitoring LLM] Using structured output with native Gemini JSON schema (video)"
                         )
                     else:
-                        content_parts.append(
-                            '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
-                        )
+                        content_parts.append(_DEFAULT_MONITORING_JSON_INSTRUCTION)
                         logger.warning(
                             "[Monitoring LLM] json_schema type specified but no schema found, falling back to prompt instructions (video)"
                         )
                 else:
-                    content_parts.append(
-                        '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
-                    )
+                    content_parts.append(_GENERIC_JSON_OBJECT_INSTRUCTION)
                     logger.info(
                         "[Monitoring LLM] Using JSON object mode with prompt instructions (video)"
                     )
@@ -886,9 +882,7 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                     "[Monitoring LLM] Using structured output with direct schema (video)"
                 )
         else:
-            content_parts.append(
-                '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
-            )
+            content_parts.append(_DEFAULT_MONITORING_JSON_INSTRUCTION)
             logger.info("[Monitoring LLM] Using default JSON response format (video)")
 
         generation_config = GenerateContentConfig(**generation_config_params)
@@ -993,16 +987,12 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                             "[Monitoring LLM] Using structured output with native Gemini JSON schema (native video)"
                         )
                     else:
-                        content_parts.append(
-                            '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
-                        )
+                        content_parts.append(_DEFAULT_MONITORING_JSON_INSTRUCTION)
                         logger.warning(
                             "[Monitoring LLM] json_schema type specified but no schema found, falling back to prompt instructions (native video)"
                         )
                 else:
-                    content_parts.append(
-                        '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
-                    )
+                    content_parts.append(_GENERIC_JSON_OBJECT_INSTRUCTION)
                     logger.info(
                         "[Monitoring LLM] Using JSON object mode with prompt instructions (native video)"
                     )
@@ -1014,9 +1004,7 @@ class GoogleMonitoringProvider(MonitoringLLMProviderBase):
                     "[Monitoring LLM] Using structured output with direct schema (native video)"
                 )
         else:
-            content_parts.append(
-                '\nYou must respond with valid JSON containing "result" (pass/fail/error) and "details" keys.'
-            )
+            content_parts.append(_DEFAULT_MONITORING_JSON_INSTRUCTION)
             logger.info(
                 "[Monitoring LLM] Using default JSON response format (native video)"
             )

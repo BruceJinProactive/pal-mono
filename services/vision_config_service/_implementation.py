@@ -84,6 +84,7 @@ async def _build_response(data: VisionCameraConfigurationData) -> CameraConfigRe
         processing_interval_seconds=data.processing_interval_seconds,
         reference_images=reference_images,
         enabled=data.enabled,
+        structured_observations_enabled=data.structured_observations_enabled,
         created_at=data.created_at,
         updated_at=data.updated_at,
     )
@@ -188,6 +189,7 @@ async def create_camera_config(
         processing_interval_seconds=request.processing_interval_seconds,
         reference_images=request.reference_images,
         enabled=request.enabled,
+        structured_observations_enabled=request.structured_observations_enabled,
         created_at=datetime.now(timezone.utc),
     )
 
@@ -268,6 +270,10 @@ async def update_camera_config(
         updates["reference_images"] = request.reference_images
     if request.enabled is not None:
         updates["enabled"] = request.enabled
+    if request.structured_observations_enabled is not None:
+        updates["structured_observations_enabled"] = (
+            request.structured_observations_enabled
+        )
 
     if not updates:
         return await _build_response(data)

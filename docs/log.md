@@ -6,6 +6,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-29
 
+- **Vision structured observations runtime.** Camera config APIs now expose
+  `structured_observations_enabled`, and the Vision observation runtime can
+  request prompt-defined intermediate `observations` before final state
+  selection while keeping existing cameras on strict state-only output by
+  default. -> `docs/records/2026-06-30-vision-structured-observations-runtime.md`
+
 - **Client onboarding Folk creation avoids brittle pagination.** Onboarding Folk sync no longer scans paginated company lists before creation; when no `folk_company_id` is linked, the flow creates a company, persists the returned ID, and then updates that company with contract acceptance metadata.
 
 ## 2026-06-27

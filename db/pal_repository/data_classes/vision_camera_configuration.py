@@ -19,4 +19,5 @@ class VisionCameraConfigurationData:
     reference_images: List[object]
     enabled: bool
     created_at: datetime
+    structured_observations_enabled: bool = False
     updated_at: datetime | None = None

@@ -57,6 +57,7 @@ def sample_orm_row(
     row.processing_interval_seconds = 15
     row.reference_images = []
     row.enabled = True
+    row.structured_observations_enabled = False
     row.created_at = datetime(2026, 4, 29, tzinfo=timezone.utc)
     row.updated_at = None
     return row

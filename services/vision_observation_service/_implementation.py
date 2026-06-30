@@ -135,10 +135,33 @@ def _normalize_image_bytes_for_llm(image_bytes: bytes, image_label: str) -> byte
         raise ValueError(f"{image_label} is not a valid processable image") from e
 
 
-def _build_state_observation_schema(state_names: list[str]) -> dict[str, Any]:
+def _build_observations_schema() -> dict[str, Any]:
     return {
         "type": "object",
-        "properties": {
+        "description": (
+            "Use-case-specific structured observations produced before choosing "
+            "the final state. The camera prompt defines the keys and shape, such "
+            'as {"upper_whole_lane_count": 4} for cake counting. '
+            "Use an empty object when no intermediate observations are useful."
+        ),
+        "properties": {},
+        "required": [],
+        "additionalProperties": True,
+    }
+
+
+def _build_state_observation_schema(
+    state_names: list[str], *, include_observations: bool = False
+) -> dict[str, Any]:
+    properties: dict[str, Any] = {}
+    required = ["reason", "state"]
+
+    if include_observations:
+        properties["observations"] = _build_observations_schema()
+        required = ["observations", *required]
+
+    properties.update(
+        {
             "reason": {
                 "type": "string",
                 "description": (
@@ -149,14 +172,21 @@ def _build_state_observation_schema(state_names: list[str]) -> dict[str, Any]:
                 "type": "string",
                 "enum": state_names,
             },
-        },
-        "required": ["reason", "state"],
+        }
+    )
+
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": required,
         "additionalProperties": False,
     }
 
 
 def _build_entity_state_schema(
     entities_with_states: list[dict[str, Any]],
+    *,
+    include_observations: bool = False,
 ) -> dict[str, Any]:
     properties: dict[str, Any] = {}
 
@@ -168,7 +198,8 @@ def _build_entity_state_schema(
             group_properties: dict[str, Any] = {}
             for definition_type, group_info in state_definition_groups.items():
                 group_properties[definition_type] = _build_state_observation_schema(
-                    group_info["state_names"]
+                    group_info["state_names"],
+                    include_observations=include_observations,
                 )
 
             properties[entity_name] = {
@@ -180,7 +211,10 @@ def _build_entity_state_schema(
             continue
 
         state_names = entity_info["state_names"]
-        properties[entity_name] = _build_state_observation_schema(state_names)
+        properties[entity_name] = _build_state_observation_schema(
+            state_names,
+            include_observations=include_observations,
+        )
 
     properties["image_relevant"] = {
         "type": "boolean",
@@ -246,6 +280,14 @@ def _is_legacy_observation(observation: dict[str, Any]) -> bool:
     )
 
 
+def _normalize_observations(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    if value == {}:
+        return None
+    return value
+
+
 def _is_unprocessable_image_error(error: Exception) -> bool:
     message = str(error).lower()
     return "unable to process input image" in message
@@ -303,6 +345,8 @@ def _build_system_prompt(
     user_prompt: str,
     entity_type_definitions: dict[str, dict[str, Any]],
     entities_with_states: list[dict[str, Any]],
+    *,
+    include_observations: bool = False,
 ) -> str:
     lines: list[str] = [
         "You are a visual monitoring assistant analyzing a camera frame "
@@ -322,8 +366,7 @@ def _build_system_prompt(
         "irrelevant to the reference images or the monitored environment "
         "(e.g. a broken feed, black screen, unrelated scene). "
         "Otherwise set image_relevant to true",
-        "- For every entity and state definition type, write reason first: "
-        "a concise image-grounded explanation for the selected state",
+        "- Keep reason concise and image-grounded for the selected state",
         "- ROI coordinates are normalized [x, y, width, height] (scale 0-1000); "
         "the same ROI may also be drawn as a labeled box on the image",
         "- Box colors are visual aids only; identify entities by the box label text, "
@@ -341,6 +384,15 @@ def _build_system_prompt(
             "- The dishes-present state means active dining or dirty/used "
             "tableware on the relevant table; do not count clean preset "
             "tableware, decorations, signage, or unrelated objects"
+        )
+
+    if include_observations:
+        lines.append(
+            "- For every entity and state definition type, write observations "
+            "first, then reason, then state. Put use-case-specific intermediate "
+            "observations in the observations object using the JSON keys and "
+            "shape defined by the camera prompt; use an empty object when there "
+            "is no useful intermediate observation"
         )
 
     if user_prompt:
@@ -397,7 +449,13 @@ def _build_system_prompt(
                 lines.append(f'  - "{entity_info["name"]}"')
 
     lines.append("")
-    lines.append("Respond ONLY with valid JSON matching the provided schema.")
+    if include_observations:
+        lines.append(
+            "Respond ONLY with valid JSON using the entity/state structure above; "
+            "observations must follow the shape defined in Context."
+        )
+    else:
+        lines.append("Respond ONLY with valid JSON matching the provided schema.")
 
     return "\n".join(lines)
 
@@ -724,6 +782,10 @@ async def get_configuration_prompt(
     if not config:
         return None
 
+    include_observations = (
+        getattr(config, "structured_observations_enabled", False) is True
+    )
+
     mapping_repo = VisionCameraEntityRepository(session)
     mappings = await mapping_repo.list_by_camera(config.id)
     if not mappings:
@@ -731,12 +793,16 @@ async def get_configuration_prompt(
             user_prompt=config.llm_prompt,
             entity_type_definitions={},
             entities_with_states=[],
+            include_observations=include_observations,
         )
         return ConfigurationPromptResult(
             llm_provider=config.llm_provider,
             llm_model=config.llm_model,
             system_prompt=prompt,
-            structured_output=_build_entity_state_schema([]),
+            structured_output=_build_entity_state_schema(
+                [],
+                include_observations=include_observations,
+            ),
             entities_with_states=[],
         )
 
@@ -787,12 +853,16 @@ async def get_configuration_prompt(
         user_prompt=config.llm_prompt,
         entity_type_definitions=entity_type_definitions,
         entities_with_states=entities_with_states,
+        include_observations=include_observations,
     )
     return ConfigurationPromptResult(
         llm_provider=config.llm_provider,
         llm_model=config.llm_model,
         system_prompt=prompt,
-        structured_output=_build_entity_state_schema(entities_with_states),
+        structured_output=_build_entity_state_schema(
+            entities_with_states,
+            include_observations=include_observations,
+        ),
         entities_with_states=entities_with_states,
     )
 
@@ -908,22 +978,32 @@ async def generate_observation(
         )
         return None
 
-    response_schema = _build_entity_state_schema(entities_with_states)
+    include_observations = (
+        getattr(config, "structured_observations_enabled", False) is True
+    )
+    response_schema = _build_entity_state_schema(
+        entities_with_states,
+        include_observations=include_observations,
+    )
 
     system_prompt = _build_system_prompt(
         user_prompt=config.llm_prompt,
         entity_type_definitions=entity_type_definitions,
         entities_with_states=entities_with_states,
+        include_observations=include_observations,
     )
 
-    response_format: dict[str, Any] = {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "entity_state_observation",
-            "strict": True,
-            "schema": response_schema,
-        },
-    }
+    if include_observations:
+        response_format: dict[str, Any] = {"type": "json_object"}
+    else:
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "entity_state_observation",
+                "strict": True,
+                "schema": response_schema,
+            },
+        }
 
     llm_prompt = config.llm_prompt
     llm_provider_name = config.llm_provider
@@ -1105,6 +1185,11 @@ async def generate_observation(
 
         for definition_type, typed_observation in typed_observations:
             state_name = typed_observation.get("state", "unknown")
+            observations = (
+                _normalize_observations(typed_observation.get("observations"))
+                if include_observations
+                else None
+            )
             if definition_type is None:
                 state_id = info["state_name_to_id"].get(state_name)
             else:
@@ -1118,6 +1203,7 @@ async def generate_observation(
                     entity_name=entity_name,
                     camera_id=camera_id,
                     definition_type=definition_type,
+                    observations=observations,
                     state=state_name,
                     state_id=state_id,
                 )

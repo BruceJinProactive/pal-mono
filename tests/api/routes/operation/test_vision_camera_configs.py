@@ -30,11 +30,12 @@ def _make_response(**overrides: object) -> CameraConfigResponse:
         "processing_interval_seconds": 15,
         "reference_images": [],
         "enabled": True,
+        "structured_observations_enabled": False,
         "created_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
         "updated_at": None,
     }
     defaults.update(overrides)
-    return CameraConfigResponse(**defaults)  # type: ignore[arg-type]
+    return CameraConfigResponse.model_validate(defaults)
 
 
 class TestCreateCameraConfig:

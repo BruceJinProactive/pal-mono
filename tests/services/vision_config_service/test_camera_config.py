@@ -26,6 +26,9 @@ def _make_config_mock(**overrides: object) -> MagicMock:
     c.processing_interval_seconds = overrides.get("processing_interval_seconds", 15)
     c.reference_images = overrides.get("reference_images", [])
     c.enabled = overrides.get("enabled", True)
+    c.structured_observations_enabled = overrides.get(
+        "structured_observations_enabled", False
+    )
     c.created_at = overrides.get("created_at", datetime.now(timezone.utc))
     c.updated_at = overrides.get("updated_at", None)
     return c
@@ -43,6 +46,7 @@ class TestCreateCameraConfig:
             signal_source_id=signal_source_id,
             name="Front Door",
             llm_prompt="Check for activity",
+            structured_observations_enabled=True,
         )
         with patch(f"{MODULE}.VisionCameraConfigurationRepository") as mock_repo_cls:
             repo = AsyncMock()
@@ -57,7 +61,10 @@ class TestCreateCameraConfig:
             result = await create_camera_config(session, project_id, request)
 
             assert result.signal_source_id == signal_source_id
+            assert result.structured_observations_enabled is True
             repo.create.assert_awaited_once()
+            created_record = repo.create.await_args.args[0]
+            assert created_record.structured_observations_enabled is True
 
     @pytest.mark.asyncio
     async def test_duplicate_source_raises(self) -> None:
@@ -288,6 +295,7 @@ class TestUpdateCameraConfig:
             processing_interval_seconds=30,
             reference_images=["img1.jpg"],
             enabled=False,
+            structured_observations_enabled=True,
         )
 
         request = UpdateCameraConfigRequest(
@@ -297,6 +305,7 @@ class TestUpdateCameraConfig:
             processing_interval_seconds=30,
             reference_images=["img1.jpg"],
             enabled=False,
+            structured_observations_enabled=True,
         )
 
         with patch(f"{MODULE}.VisionCameraConfigurationRepository") as mock_repo_cls:
@@ -313,6 +322,11 @@ class TestUpdateCameraConfig:
 
             assert result.llm_prompt == "New prompt"
             assert result.enabled is False
+            assert result.structured_observations_enabled is True
+            repo.update.assert_awaited_once()
+            assert (
+                repo.update.await_args.kwargs["structured_observations_enabled"] is True
+            )
 
     @pytest.mark.asyncio
     async def test_not_found_raises(self) -> None:

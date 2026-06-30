@@ -39,6 +39,10 @@ class UpdateCameraConfigRequest(BaseModel):
     enabled: bool | None = Field(
         default=None, description="Whether the configuration is active"
     )
+    structured_observations_enabled: bool | None = Field(
+        default=None,
+        description="Whether structured observations are requested from the LLM",
+    )
 
 
 class CreateCameraConfigRequest(BaseModel):
@@ -74,6 +78,10 @@ class CreateCameraConfigRequest(BaseModel):
     enabled: bool = Field(
         default=True, description="Whether the configuration is active"
     )
+    structured_observations_enabled: bool = Field(
+        default=False,
+        description="Whether structured observations are requested from the LLM",
+    )
 
 
 class CameraConfigResponse(BaseModel):
@@ -91,6 +99,10 @@ class CameraConfigResponse(BaseModel):
     processing_interval_seconds: int
     reference_images: list[Any]
     enabled: bool
+    structured_observations_enabled: bool = Field(
+        ...,
+        description="Whether structured observations are requested from the LLM",
+    )
     created_at: datetime
     updated_at: datetime | None
 

@@ -1290,6 +1290,7 @@ async def create_camera_config(
     llm_model: str = Form(default="gpt-4o"),
     processing_interval_seconds: int = Form(default=15),
     enabled: bool = Form(default=True),
+    structured_observations_enabled: bool = Form(default=False),
     reference_images: list[UploadFile] = File(default=[]),
     reference_image_descriptions: list[str] = Form(default=[]),
     context: UserContext = Depends(
@@ -1323,6 +1324,7 @@ async def create_camera_config(
         llm_model=llm_model,
         processing_interval_seconds=processing_interval_seconds,
         enabled=enabled,
+        structured_observations_enabled=structured_observations_enabled,
     )
 
     return await _vision_camera_configs.create_camera_config(
