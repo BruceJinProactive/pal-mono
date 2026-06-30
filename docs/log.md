@@ -14,6 +14,14 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 - **Client onboarding Folk creation avoids brittle pagination.** Onboarding Folk sync no longer scans paginated company lists before creation; when no `folk_company_id` is linked, the flow creates a company, persists the returned ID, and then updates that company with contract acceptance metadata.
 
+## 2026-06-28
+
+- **Mercury engagement summary metrics.** Updated Slack Mercury daily/account
+  engagement reports to remove `RES w/o Xfer%` and add negative sentiment,
+  transfer-agent-fault, and spam percentages from existing post-call analytics,
+  with numerator/denominator counts shown next to the new rates in Slack.
+  -> `docs/records/2026-06-28-mercury-engagement-summary-metrics.md`
+
 ## 2026-06-27
 
 - **Chat bridge empty-output reason split.** Voice chat bridge outcomes now

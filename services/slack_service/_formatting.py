@@ -17,6 +17,19 @@ from utils.log import logger
 
 # Import access control functions that are needed for formatting
 from ._access_control import get_project_display_name
+from ._formatting_utils import (
+    CALL_QUALITY_DISTRIBUTION_REPORT,
+    TRANSFER_REASON_DISTRIBUTION_REPORT,
+    ColumnConfig,
+    apply_derived_engagement_rates,
+    apply_derived_totals,
+    create_column_config,
+    format_percent_for_text,
+    format_rate_with_count,
+    safe_float_format,
+    summarize_spam_by_group,
+    summarize_transfer_fault_by_group,
+)
 
 # =============================================================================
 # GENERIC SLACK BLOCK BUILDERS (Reusable across projects)
@@ -181,8 +194,9 @@ ENGAGEMENT_COLUMNS = [
     "avg_duration",
     "transfer_calls",
     "transfer_rate",
-    "positive_calls",
-    "negative_calls",
+    "negative_sentiment_rate",
+    "transfer_agent_fault_rate",
+    "spam_rate",
 ]
 
 CONVERSION_COLUMNS = [
@@ -197,40 +211,8 @@ CONVERSION_COLUMNS = [
 ALL_COLUMNS = ENGAGEMENT_COLUMNS + CONVERSION_COLUMNS
 
 
-# =============================================================================
-# FORMATTING UTILITY FUNCTIONS
-# =============================================================================
-
-
-def safe_float_format(value, decimals: int = 1) -> str:
-    """Safely format a value as float, handling strings and None."""
-    if value is None:
-        return "N/A"
-    try:
-        return f"{float(value):.{decimals}f}"
-    except (ValueError, TypeError):
-        return str(value)
-
-
-def create_column_config(key: str, header: str, format_type: str = "int") -> dict:
-    """Create a standardized column configuration."""
-    format_funcs = {
-        "int": lambda x: str(x) if x is not None else "N/A",
-        "float": lambda x: safe_float_format(x, 1),
-        "percent": lambda x: f"{safe_float_format(x, 1)}%" if x is not None else "N/A",
-        "currency": lambda x: f"${safe_float_format(x, 2)}" if x is not None else "N/A",
-        "duration": lambda x: f"{safe_float_format(x, 1)}s" if x is not None else "N/A",
-    }
-
-    return {
-        "header": header,
-        "data_key": key,
-        "format_func": format_funcs.get(format_type, format_funcs["int"]),
-    }
-
-
 # Column configuration for unified reports
-REPORT_COLUMNS = {
+REPORT_COLUMNS: dict[str, ColumnConfig] = {
     # Engagement metrics
     "active_users": create_column_config("active_users", "Active Users"),
     "total_conversations": create_column_config("total_conversations", "Total Conv"),
@@ -240,6 +222,13 @@ REPORT_COLUMNS = {
     "avg_duration": create_column_config("avg_duration", "Avg Duration", "duration"),
     "transfer_calls": create_column_config("transfer_calls", "Transfer Calls"),
     "transfer_rate": create_column_config("transfer_rate", "Transfer Rate", "percent"),
+    "negative_sentiment_rate": create_column_config(
+        "negative_sentiment_rate", "Negative Sentiment", "percent"
+    ),
+    "transfer_agent_fault_rate": create_column_config(
+        "transfer_agent_fault_rate", "Transfer w Agent Fault", "percent"
+    ),
+    "spam_rate": create_column_config("spam_rate", "Spam %", "percent"),
     "positive_calls": create_column_config("positive_calls", "Positive Calls"),
     "negative_calls": create_column_config("negative_calls", "Negative Calls"),
     # Conversion metrics
@@ -273,8 +262,8 @@ def merge_report_data(reports: list) -> dict:
     Returns:
         dict: Unified account data with all metrics
     """
-    unified_accounts = {}
-    totals_summary = {}
+    unified_accounts: dict[str, dict[str, object]] = {}
+    totals_summary: dict[str, dict[str, object]] = {}
 
     # Process each report type
     for report in reports:
@@ -296,6 +285,29 @@ def merge_report_data(reports: list) -> dict:
 
                 # Merge metrics into unified structure
                 unified_accounts[account_name].update(metrics)
+
+        if (
+            report_name == TRANSFER_REASON_DISTRIBUTION_REPORT
+            and "transfer_reason_distribution" in report_data
+        ):
+            transfer_fault_metrics = summarize_transfer_fault_by_group(
+                report_data["transfer_reason_distribution"]
+            )
+            for account_name, metrics in transfer_fault_metrics.items():
+                unified_accounts.setdefault(account_name, {}).update(metrics)
+
+        if (
+            report_name == CALL_QUALITY_DISTRIBUTION_REPORT
+            and "call_quality_distribution" in report_data
+        ):
+            spam_metrics = summarize_spam_by_group(
+                report_data["call_quality_distribution"]
+            )
+            for account_name, metrics in spam_metrics.items():
+                unified_accounts.setdefault(account_name, {}).update(metrics)
+
+    apply_derived_engagement_rates(unified_accounts)
+    apply_derived_totals(totals_summary)
 
     return {"unified_accounts": unified_accounts, "totals_summary": totals_summary}
 
@@ -589,7 +601,9 @@ def _create_engagement_table_generic(
         "Calls",
         "Avg Call Time",
         "Xfer %",
-        "Res w/o Xfer %",
+        "Negative Sentiment",
+        "Transfer w Agent Fault",
+        "Spam %",
     ]
 
     # Build data rows - limit to first 15 entries
@@ -602,8 +616,27 @@ def _create_engagement_table_generic(
         users = item_data.get("active_users", "0")
         conv = item_data.get("total_conversations", "0")
         calls = item_data.get("total_calls", "0")
+        transfer_calls = item_data.get("transfer_calls", "0")
         duration = item_data.get("avg_duration", "0")
         transfer_rate = item_data.get("transfer_rate", "0")
+        negative_sentiment_rate = format_rate_with_count(
+            item_data.get("negative_sentiment_rate"),
+            item_data.get("negative_calls", 0),
+            calls,
+            1,
+        )
+        transfer_agent_fault_rate = format_rate_with_count(
+            item_data.get("transfer_agent_fault_rate"),
+            item_data.get("transfer_agent_fault_calls", 0),
+            transfer_calls,
+            1,
+        )
+        spam_rate = format_rate_with_count(
+            item_data.get("spam_rate"),
+            item_data.get("spam_calls", 0),
+            calls,
+            1,
+        )
 
         # Format numeric values to consistent format
         # Duration: format to 1 decimal place, remove 's' suffix
@@ -620,11 +653,8 @@ def _create_engagement_table_generic(
         try:
             transfer_rate_float = float(transfer_rate)
             transfer_rate = f"{transfer_rate_float:.1f}"
-            # Calculate resolution rate = 100 - transfer rate
-            resolution_rate = f"{100 - transfer_rate_float:.1f}"
         except (ValueError, TypeError):
             transfer_rate = str(transfer_rate)
-            resolution_rate = "N/A"
 
         # For projects, use display_name if available
         display_name = name
@@ -638,7 +668,9 @@ def _create_engagement_table_generic(
             str(calls),
             duration,
             transfer_rate,
-            resolution_rate,
+            negative_sentiment_rate,
+            transfer_agent_fault_rate,
+            spam_rate,
         ]
         data_rows.append(row)
 
@@ -759,16 +791,45 @@ def build_engagement_summary(totals_summary: dict) -> list[str]:
         transfer_rate = totals_summary["Call Time Metrics"].get(
             "overall_transfer_rate", 0
         )
+        total_transfers = totals_summary["Call Time Metrics"].get(
+            "total_transfer_calls", 0
+        )
+        total_negative_calls = totals_summary["Call Time Metrics"].get(
+            "total_negative_calls", 0
+        )
+        negative_sentiment_rate = totals_summary["Call Time Metrics"].get(
+            "negative_sentiment_rate"
+        )
+        transfer_agent_fault_calls = totals_summary["Call Time Metrics"].get(
+            "transfer_agent_fault_calls", 0
+        )
+        transfer_agent_fault_rate = totals_summary["Call Time Metrics"].get(
+            "transfer_agent_fault_rate"
+        )
+        spam_calls = totals_summary["Call Time Metrics"].get("spam_calls", 0)
+        spam_rate = totals_summary["Call Time Metrics"].get("spam_rate")
         avg_duration_formatted = safe_float_format(avg_duration, 1)
-        transfer_rate_formatted = safe_float_format(transfer_rate, 1)
-        # Calculate resolution rate = 100 - transfer rate
-        try:
-            resolution_rate = 100 - float(transfer_rate)
-            resolution_rate_formatted = safe_float_format(resolution_rate, 1)
-        except (ValueError, TypeError):
-            resolution_rate_formatted = "N/A"
+        transfer_rate_formatted = format_percent_for_text(transfer_rate, 1)
+        negative_sentiment_formatted = format_rate_with_count(
+            negative_sentiment_rate,
+            total_negative_calls,
+            total_calls,
+            1,
+        )
+        transfer_agent_fault_formatted = format_rate_with_count(
+            transfer_agent_fault_rate,
+            transfer_agent_fault_calls,
+            total_transfers,
+            1,
+        )
+        spam_rate_formatted = format_rate_with_count(
+            spam_rate,
+            spam_calls,
+            total_calls,
+            1,
+        )
         summary_lines.append(
-            f"• Calls: *{total_calls}* (Avg {avg_duration_formatted}s, Transfer Rate {transfer_rate_formatted}%, Resolution without Transfer Rate {resolution_rate_formatted}%)"
+            f"• Calls: *{total_calls}* (Avg {avg_duration_formatted}s, Transfer Rate {transfer_rate_formatted}, Negative Sentiment {negative_sentiment_formatted}, Transfer w Agent Fault {transfer_agent_fault_formatted}, Spam {spam_rate_formatted})"
         )
 
     return summary_lines
