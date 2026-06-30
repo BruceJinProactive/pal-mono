@@ -862,7 +862,7 @@ async def test_append_tool_result_skips_non_cacheable_payload(
 
 
 @pytest.mark.asyncio
-async def test_append_tool_result_skips_oversized_payload(
+async def test_append_tool_result_writes_large_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_client = _FakeRedisClient()
@@ -870,28 +870,25 @@ async def test_append_tool_result_skips_oversized_payload(
     _install_cache_fakes(
         monkeypatch,
         fake_client,
-        settings=RedisCacheSettings(
-            enabled=True,
-            host="cache.example.local",
-            max_item_bytes=20,
-        ),
         metrics=metrics,
     )
 
     await append_tool_result(
         "conversation-1",
-        _raw_payload(raw_result="x" * 100),
+        _raw_payload(raw_result="x" * 100_000),
     )
 
-    assert fake_client.rpush_calls == []
+    assert json.loads(fake_client.rpush_calls[0][1]) == _raw_payload(
+        raw_result="x" * 100_000
+    )
     assert metrics[-1] == (
         "tool_result_cache.operation",
-        {"operation": "append", "outcome": "skipped", "reason": "too_large"},
+        {"operation": "append", "outcome": "success"},
     )
 
 
 @pytest.mark.asyncio
-async def test_append_tool_result_ignores_unrelated_fields_before_size_limit(
+async def test_append_tool_result_ignores_unrelated_fields_before_write(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_client = _FakeRedisClient()
@@ -899,11 +896,6 @@ async def test_append_tool_result_ignores_unrelated_fields_before_size_limit(
     _install_cache_fakes(
         monkeypatch,
         fake_client,
-        settings=RedisCacheSettings(
-            enabled=True,
-            host="cache.example.local",
-            max_item_bytes=256,
-        ),
         metrics=metrics,
     )
 

@@ -40,7 +40,6 @@ class RedisCacheSettings(BaseSettings):
     cluster_mode: bool = False
     ssl: bool = True
     default_ttl_seconds: int = Field(default=1800, ge=1)
-    max_item_bytes: int = Field(default=32768, ge=1)
     socket_connect_timeout_seconds: float = Field(default=2.0, gt=0)
     socket_timeout_seconds: float = Field(default=2.0, gt=0)
     health_check_interval_seconds: int = Field(default=30, ge=0)

@@ -314,14 +314,6 @@ async def append_tool_result(
             allow_nan=False,
         )
         size_bytes = len(serialized.encode("utf-8"))
-        if size_bytes > settings.max_item_bytes:
-            _log_cache_event(
-                "append",
-                "skipped",
-                reason="too_large",
-                item_bytes=size_bytes,
-            )
-            return
 
         client = await get_tool_result_cache_client()
         if client is None:

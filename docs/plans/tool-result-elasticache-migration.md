@@ -118,7 +118,6 @@ REDIS_CACHE_SECRET_KEY=REDIS_CACHE_AUTH_TOKEN
 REDIS_CACHE_CLUSTER_MODE=false
 REDIS_CACHE_SSL=true
 REDIS_CACHE_DEFAULT_TTL_SECONDS=1800
-REDIS_CACHE_MAX_ITEM_BYTES=32768
 REDIS_CACHE_SOCKET_CONNECT_TIMEOUT_SECONDS=2.0
 REDIS_CACHE_SOCKET_TIMEOUT_SECONDS=2.0
 REDIS_CACHE_HEALTH_CHECK_INTERVAL_SECONDS=30
@@ -160,7 +159,6 @@ Responsibilities:
 - Expose a close helper that delegates to the shared Redis client shutdown.
 - `append_tool_result(conversation_id, payload)`:
   - sanitize/allowlist payload via `build_cacheable_tool_result(...)`
-  - reject entries over `REDIS_CACHE_MAX_ITEM_BYTES`
   - `RPUSH` the compact JSON item
   - `EXPIRE` the key using `REDIS_CACHE_DEFAULT_TTL_SECONDS`
   - log/metric success, skips, and errors without raising

@@ -34,7 +34,6 @@ def test_redis_cache_settings_defaults_disabled(
     assert settings.cluster_mode is False
     assert settings.ssl is True
     assert settings.default_ttl_seconds == 1800
-    assert settings.max_item_bytes == 32768
     assert settings.socket_connect_timeout_seconds == 2.0
     assert settings.socket_timeout_seconds == 2.0
     assert settings.health_check_interval_seconds == 30
@@ -50,7 +49,6 @@ def test_redis_cache_settings_parse_env(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("REDIS_CACHE_CLUSTER_MODE", "true")
     monkeypatch.setenv("REDIS_CACHE_SSL", "false")
     monkeypatch.setenv("REDIS_CACHE_DEFAULT_TTL_SECONDS", "900")
-    monkeypatch.setenv("REDIS_CACHE_MAX_ITEM_BYTES", "65536")
     monkeypatch.setenv("REDIS_CACHE_SOCKET_CONNECT_TIMEOUT_SECONDS", "1.5")
     monkeypatch.setenv("REDIS_CACHE_SOCKET_TIMEOUT_SECONDS", "3.5")
     monkeypatch.setenv("REDIS_CACHE_HEALTH_CHECK_INTERVAL_SECONDS", "45")
@@ -66,7 +64,6 @@ def test_redis_cache_settings_parse_env(monkeypatch: pytest.MonkeyPatch) -> None
     assert settings.cluster_mode is True
     assert settings.ssl is False
     assert settings.default_ttl_seconds == 900
-    assert settings.max_item_bytes == 65536
     assert settings.socket_connect_timeout_seconds == 1.5
     assert settings.socket_timeout_seconds == 3.5
     assert settings.health_check_interval_seconds == 45
