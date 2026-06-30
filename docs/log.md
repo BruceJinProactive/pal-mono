@@ -10,6 +10,8 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 - **Client onboarding Folk sync is update-only.** Manage App client account creation keeps the Folk company ID optional, and post-signature Folk sync updates the linked company when present instead of creating a new Folk company. Missing Folk company links now skip the Folk update while allowing the rest of handoff completion to continue. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`, `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 
+- **Admin conversations respect selected location when pinning.** Project-scoped conversation lists now ignore deep-linked conversations from other projects in the same account, preventing the Admin Console location selector from jumping to another store when opening Conversations.
+
 ## 2026-06-29
 
 - **Customer RBAC implementation plan.** Added a cross-repo implementation plan for collapsing customer roles to Admin, Store Owner, and Store Member; enforcing store-scoped reads/writes; keeping agent and Operations writes internal; and using store/project payer scope for franchisee-paid billing. -> `docs/plans/rbac/customer-rbac-implementation-plan.md`

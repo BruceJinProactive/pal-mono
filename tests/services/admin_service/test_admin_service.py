@@ -705,6 +705,92 @@ def test_list_conversations_in_account_does_not_pin_wrong_account(
     assert [preview.conversation.id for preview in previews] == [recent_conversation_id]
 
 
+def test_list_conversations_in_account_does_not_pin_wrong_project(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test list_conversations_in_account ignores selected conversations from other projects.
+
+    Expected result: project-scoped listing does not pin a conversation from
+    another store in the same account.
+    """
+    account_id = uuid4()
+    selected_project_id = uuid4()
+    other_project_id = uuid4()
+    selected_conversation_id = uuid4()
+    recent_conversation_id = uuid4()
+    user = SimpleNamespace(id=uuid4())
+
+    selected_conversation = MagicMock()
+    selected_conversation.id = selected_conversation_id
+    selected_conversation.project_id = other_project_id
+    selected_conversation.user.account_id = account_id
+
+    recent_conversation = MagicMock()
+    recent_conversation.id = recent_conversation_id
+    recent_conversation.project_id = selected_project_id
+
+    message_repository = MagicMock()
+    message_repository.get_last_user_message_by_conversation.return_value = None
+    message_repository.get_last_message_by_conversation.return_value = MagicMock()
+    message_repository.get_message_count_by_conversation.return_value = 3
+
+    conversation_repository = MagicMock()
+    conversation_repository.get_conversation_ids_by_user_ids.return_value = [
+        recent_conversation_id
+    ]
+    conversation_repository.get_paginated_sessions_by_ids.return_value = (
+        1,
+        [recent_conversation],
+    )
+    conversation_repository.get_conversation_by_id.return_value = selected_conversation
+
+    order_repository = MagicMock()
+    order_repository.get_latest_orders_by_conversation_ids.return_value = {}
+
+    mocker.patch(
+        "services.admin_service._implementation.user_service.get_users_by_account_id",
+        return_value=[user],
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.MessageRepository",
+        return_value=message_repository,
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.ConversationRepository",
+        return_value=conversation_repository,
+    )
+    mocker.patch(
+        "services.admin_service._implementation.db.OrderRepository",
+        return_value=order_repository,
+    )
+
+    total, previews = list_conversations_in_account(
+        account_id=account_id,
+        keyword="",
+        channel=None,
+        language=None,
+        purpose=None,
+        ended_reason=None,
+        customer_converted=None,
+        project_id=selected_project_id,
+        start_date=None,
+        end_date=datetime.now(timezone.utc),
+        page=1,
+        page_size=10,
+        escalated=False,
+        hide_testing_sessions=True,
+        db_session=mock_session,
+        conversation_id=selected_conversation_id,
+    )
+
+    assert total == 1
+    assert [preview.conversation.id for preview in previews] == [recent_conversation_id]
+    order_repository.get_latest_orders_by_conversation_ids.assert_called_once_with(
+        [recent_conversation_id]
+    )
+
+
 def test_list_conversations_in_account_filters_by_order_presence(mocker) -> None:
     """
     Test list_conversations_in_account passes the order-presence filter to storage.

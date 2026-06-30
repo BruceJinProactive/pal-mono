@@ -133,6 +133,20 @@ def get_conversation_by_id(
     return conversation
 
 
+def _conversation_matches_listing_scope(
+    conversation: db.Conversation,
+    account_id: uuid.UUID,
+    project_id: uuid.UUID | None,
+) -> bool:
+    account_matches = (
+        getattr(getattr(conversation, "user", None), "account_id", None) == account_id
+    )
+    project_matches = (
+        project_id is None or getattr(conversation, "project_id", None) == project_id
+    )
+    return account_matches and project_matches
+
+
 def list_conversations_in_account(
     account_id: uuid.UUID,
     keyword: str,
@@ -190,10 +204,10 @@ def list_conversations_in_account(
     selected_conversation = None
     if conversation_id is not None and page == 1:
         candidate = conversation_repository.get_conversation_by_id(conversation_id)
-        if (
-            candidate is not None
-            and getattr(getattr(candidate, "user", None), "account_id", None)
-            == account_id
+        if candidate is not None and _conversation_matches_listing_scope(
+            candidate,
+            account_id,
+            project_id,
         ):
             selected_conversation = candidate
             selected_is_visible = any(
