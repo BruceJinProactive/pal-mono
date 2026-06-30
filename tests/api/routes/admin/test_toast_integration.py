@@ -725,6 +725,151 @@ async def test_create_project_integration_stamps_manual_toast_menu_metadata() ->
 
 
 @pytest.mark.asyncio
+async def test_create_project_integration_auto_fetch_updates_product_info() -> None:
+    project_id = uuid.uuid4()
+    integration_id = uuid.uuid4()
+    account_id = uuid.uuid4()
+    session = MagicMock()
+    compiled_menu = {
+        "items": [],
+        "modifier_groups_by_reference_id": {},
+    }
+    req = CreateProjectIntegrationRequest(
+        integration_id=integration_id,
+        store_identifier="rest-guid-123",
+        tool_name="toast_v3",
+        config={"restaurant_guid": "rest-guid-123"},
+        auto_fetch=True,
+    )
+    compiled_req = req.model_copy(
+        update={
+            "config": {
+                "restaurant_guid": "rest-guid-123",
+                "menu_data": compiled_menu,
+            }
+        }
+    )
+
+    def _create_project_integration(
+        *,
+        params: ProjectIntegrationParams,
+        **_kwargs: object,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=uuid.uuid4(),
+            project_id=project_id,
+            integration_id=integration_id,
+            store_identifier=req.store_identifier,
+            tool_name=req.tool_name,
+            config=params.config,
+            created_at=datetime.now(),
+        )
+
+    with (
+        patch("api.routes.admin._integration.db.ProjectRepository") as repo_cls,
+        patch(
+            "api.routes.admin._integration._compile_toast_config",
+            return_value=compiled_req,
+        ) as mock_compile,
+        patch(
+            "api.routes.admin._integration.build_toast_lookup_prompt_context_markdown",
+            return_value="## Exact Item Inventory\n",
+        ) as mock_build_product_info,
+        patch(
+            "api.routes.admin._integration.integration_service.create_project_integration",
+            side_effect=_create_project_integration,
+        ) as mock_create,
+    ):
+        project_repo = repo_cls.return_value
+        project_repo.get_project.return_value = SimpleNamespace(
+            id=project_id,
+            account_id=account_id,
+        )
+        project_repo.update_project.return_value = SimpleNamespace(
+            id=project_id,
+            account_id=account_id,
+            product_info="## Exact Item Inventory\n",
+        )
+
+        result = await create_project_integration(
+            project_id,
+            req,
+            _make_context(),
+            session,
+        )
+
+    mock_compile.assert_called_once()
+    mock_build_product_info.assert_called_once_with(compiled_menu)
+    project_repo.update_project.assert_called_once_with(
+        project_id, product_info="## Exact Item Inventory\n"
+    )
+    params = mock_create.call_args.kwargs["params"]
+    assert params.config["menu_data"] == compiled_menu
+    assert result.config["menu_data"] == compiled_menu
+
+
+@pytest.mark.asyncio
+async def test_create_project_integration_auto_fetch_product_info_error_is_400() -> (
+    None
+):
+    project_id = uuid.uuid4()
+    account_id = uuid.uuid4()
+    session = MagicMock()
+    compiled_menu = {
+        "items": [],
+        "modifier_groups_by_reference_id": {},
+    }
+    req = CreateProjectIntegrationRequest(
+        integration_id=uuid.uuid4(),
+        store_identifier="rest-guid-123",
+        tool_name="toast_v3",
+        config={"restaurant_guid": "rest-guid-123"},
+        auto_fetch=True,
+    )
+    compiled_req = req.model_copy(
+        update={
+            "config": {
+                "restaurant_guid": "rest-guid-123",
+                "menu_data": compiled_menu,
+            }
+        }
+    )
+
+    with (
+        patch("api.routes.admin._integration.db.ProjectRepository") as repo_cls,
+        patch(
+            "api.routes.admin._integration._compile_toast_config",
+            return_value=compiled_req,
+        ),
+        patch(
+            "api.routes.admin._integration.build_toast_lookup_prompt_context_markdown",
+            side_effect=ValueError("bad compiled menu"),
+        ),
+        patch(
+            "api.routes.admin._integration.integration_service.create_project_integration",
+        ) as mock_create,
+    ):
+        project_repo = repo_cls.return_value
+        project_repo.get_project.return_value = SimpleNamespace(
+            id=project_id,
+            account_id=account_id,
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await create_project_integration(
+                project_id,
+                req,
+                _make_context(),
+                session,
+            )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Failed to build Toast product info"
+    project_repo.update_project.assert_not_called()
+    mock_create.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_update_project_integration_stamps_changed_manual_toast_menu_metadata() -> (
     None
 ):

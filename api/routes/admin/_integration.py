@@ -5,7 +5,10 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from pal_agents.menu_assets.olo import OloMenuCompileError
-from pal_agents.menu_assets.toast.compiler import compile_toast_menu_v2
+from pal_agents.menu_assets.toast import (
+    build_toast_lookup_prompt_context_markdown,
+    compile_toast_menu_v2,
+)
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
@@ -76,6 +79,18 @@ def _stamp_manual_toast_menu_update_metadata(
         )
 
     return updated_config
+
+
+def _build_toast_product_info(config: dict | None) -> str | None:
+    """Build Menu / Product Info text from compiled Toast menu_data."""
+    if not config:
+        return None
+
+    compiled_menu = config.get("menu_data")
+    if not isinstance(compiled_menu, dict):
+        return None
+
+    return build_toast_lookup_prompt_context_markdown(compiled_menu)
 
 
 def _compile_olo_config(
@@ -477,6 +492,25 @@ async def create_project_integration(
         project_integration = await run_in_threadpool(
             _compile_toast_config, project_integration, project.account_id
         )
+        try:
+            product_info = _build_toast_product_info(project_integration.config)
+        except Exception as exc:
+            logger.error(
+                "[ToastIntegration] Failed to build product info",
+                extra={"project_id": str(project_id), "error": str(exc)},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to build Toast product info",
+                headers={"Content-Type": "application/json"},
+            ) from exc
+
+        if product_info:
+            updated_project = project_repository.update_project(
+                project_id, product_info=product_info
+            )
+            if updated_project is None:
+                raise not_found_error(f"Project {project_id} not found")
     elif project_integration.tool_name == "toast_v3":
         project_integration = project_integration.model_copy(
             update={
