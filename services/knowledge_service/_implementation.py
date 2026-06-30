@@ -1,7 +1,7 @@
 import os
 import shutil
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Optional
 
@@ -28,6 +28,12 @@ def _get_pinecone_api_key() -> str:
 
 def get_pinecone_api_key() -> str:
     return _get_pinecone_api_key()
+
+
+def _attach_manage_app_menu_update_metadata(result: dict) -> dict:
+    result.setdefault("menu_last_updated", datetime.now(timezone.utc).isoformat())
+    result.setdefault("menu_last_updated_source", "manage_app")
+    return result
 
 
 @lru_cache()
@@ -443,6 +449,7 @@ def update_agent_kb(
                 pinecone_namespace=pinecone_namespace,
                 general_api_endpoint=general_api_endpoint,
             )
+            result = _attach_manage_app_menu_update_metadata(result)
 
             logger.info(
                 "Successfully updated knowledge base for OLO agent",

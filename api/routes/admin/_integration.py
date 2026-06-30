@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
+from pal_agents.menu_assets.olo import OloMenuCompileError
 from pal_agents.menu_assets.toast.compiler import compile_toast_menu_v2
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -22,6 +23,7 @@ from api.schemas.admin.integration import (
     UpdateProjectIntegrationRequest,
 )
 from services.integration_service._utils import _get_integration_credentials
+from services.knowledge_service.olo import compile_olo_menu_data
 from services.knowledge_service.toast._client import download_menu
 from tools.toast_tool._apis import get_toast_access_token
 from utils.log import logger
@@ -35,6 +37,8 @@ from ._builder import (
 from ._utils import UserContext, not_found_error
 
 TOAST_MENU_LAST_UPDATED_SOURCE_MANAGE_APP = "manage_app"
+OLO_MENU_LAST_UPDATED_SOURCE_MANAGE_APP = "manage_app"
+OLO_RAW_MENU_BUNDLE_CONFIG_KEY = "raw_menu_bundle"
 
 
 def _utc_now_isoformat() -> str:
@@ -71,6 +75,45 @@ def _stamp_manual_toast_menu_update_metadata(
             TOAST_MENU_LAST_UPDATED_SOURCE_MANAGE_APP
         )
 
+    return updated_config
+
+
+def _compile_olo_config(
+    config: dict,
+    existing_config: dict | None = None,
+) -> dict:
+    raw_bundle = config.get(OLO_RAW_MENU_BUNDLE_CONFIG_KEY)
+    if raw_bundle is None:
+        return config
+    if not isinstance(raw_bundle, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="olo_v1 config.raw_menu_bundle must be an object",
+            headers={"Content-Type": "application/json"},
+        )
+
+    try:
+        compiled_menu = compile_olo_menu_data(
+            raw_bundle,
+            selected_categories=config.get("selected_categories") or None,
+            make_unique_categories=config.get("make_unique_categories") or None,
+        )
+    except OloMenuCompileError as exc:
+        logger.error(
+            "[OloIntegration] Failed to compile menu",
+            extra={"error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to compile Olo menu: {exc}",
+            headers={"Content-Type": "application/json"},
+        ) from exc
+
+    updated_config = {**(existing_config or {}), **config}
+    updated_config.pop(OLO_RAW_MENU_BUNDLE_CONFIG_KEY, None)
+    updated_config["menu_data"] = compiled_menu
+    updated_config["menu_last_updated"] = _utc_now_isoformat()
+    updated_config["menu_last_updated_source"] = OLO_MENU_LAST_UPDATED_SOURCE_MANAGE_APP
     return updated_config
 
 
@@ -442,6 +485,10 @@ async def create_project_integration(
                 )
             }
         )
+    elif project_integration.tool_name == "olo_v1":
+        project_integration = project_integration.model_copy(
+            update={"config": _compile_olo_config(project_integration.config)}
+        )
 
     created_project_integration = integration_service.create_project_integration(
         session=session,
@@ -485,6 +532,15 @@ async def update_project_integration(
         project_integration = project_integration.model_copy(
             update={
                 "config": _stamp_manual_toast_menu_update_metadata(
+                    project_integration.config,
+                    db_project_integration.config,
+                )
+            }
+        )
+    elif effective_tool_name == "olo_v1" and project_integration.config is not None:
+        project_integration = project_integration.model_copy(
+            update={
+                "config": _compile_olo_config(
                     project_integration.config,
                     db_project_integration.config,
                 )
