@@ -26,7 +26,10 @@ from api.schemas.admin.integration import (
     UpdateProjectIntegrationRequest,
 )
 from services.integration_service._utils import _get_integration_credentials
-from services.knowledge_service.olo import compile_olo_menu_data
+from services.knowledge_service.olo import (
+    compile_olo_menu_data,
+    fetch_and_compile_olo_menu_data,
+)
 from services.knowledge_service.toast._client import download_menu
 from tools.toast_tool._apis import get_toast_access_token
 from utils.log import logger
@@ -42,6 +45,7 @@ from ._utils import UserContext, not_found_error
 TOAST_MENU_LAST_UPDATED_SOURCE_MANAGE_APP = "manage_app"
 OLO_MENU_LAST_UPDATED_SOURCE_MANAGE_APP = "manage_app"
 OLO_RAW_MENU_BUNDLE_CONFIG_KEY = "raw_menu_bundle"
+OLO_AUTO_FETCH_MENU_DATA_CONFIG_KEY = "auto_fetch_menu_data"
 
 
 def _utc_now_isoformat() -> str:
@@ -130,6 +134,130 @@ def _compile_olo_config(
     updated_config["menu_last_updated"] = _utc_now_isoformat()
     updated_config["menu_last_updated_source"] = OLO_MENU_LAST_UPDATED_SOURCE_MANAGE_APP
     return updated_config
+
+
+def _get_raw_config_api_endpoint(raw_config: dict | None) -> str | None:
+    api_endpoints = (raw_config or {}).get("api_endpoints")
+    if not isinstance(api_endpoints, dict):
+        return None
+
+    endpoint = api_endpoints.get("general_api_endpoint")
+    if not isinstance(endpoint, str) or not endpoint.strip():
+        return None
+
+    return endpoint.strip()
+
+
+def _fetch_and_compile_olo_config(
+    *,
+    integration_id: uuid.UUID,
+    account_id: uuid.UUID,
+    store_identifier: str | None,
+    config: dict | None,
+    existing_config: dict | None = None,
+) -> dict:
+    """Fetch an Olo menu from account credentials and return compiled config."""
+    from sqlalchemy import select
+
+    from db.session import SyncSessionLocal
+    from db.tables.integration import Integration as IntegrationModel
+
+    config = {
+        key: value
+        for key, value in (config or {}).items()
+        if key != OLO_AUTO_FETCH_MENU_DATA_CONFIG_KEY
+    }
+    restaurant_id = str(config.get("restaurant_id") or store_identifier or "").strip()
+    if not restaurant_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="olo_v1 config requires restaurant_id",
+            headers={"Content-Type": "application/json"},
+        )
+
+    with SyncSessionLocal() as scoped_session:
+        integration = scoped_session.execute(
+            select(IntegrationModel).where(
+                IntegrationModel.id == integration_id,
+                IntegrationModel.account_id == account_id,
+            )
+        ).scalar_one_or_none()
+
+    if not integration:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Integration not found",
+            headers={"Content-Type": "application/json"},
+        )
+
+    try:
+        credentials = _get_integration_credentials(integration.secret_key)
+    except (KeyError, ValueError) as exc:
+        logger.error(
+            "[OloIntegration] Failed to read integration credentials",
+            extra={"integration_id": str(integration_id), "error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not read integration credentials",
+            headers={"Content-Type": "application/json"},
+        ) from exc
+
+    client_id = credentials.get("client_id")
+    client_secret = credentials.get("client_secret")
+    if not client_id or not client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Integration is missing client_id or client_secret",
+            headers={"Content-Type": "application/json"},
+        )
+
+    base_url = str(
+        config.get("base_url")
+        or _get_raw_config_api_endpoint(integration.raw_config)
+        or ""
+    ).strip()
+    if not base_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Olo general_api_endpoint is missing",
+            headers={"Content-Type": "application/json"},
+        )
+
+    try:
+        compiled_menu = fetch_and_compile_olo_menu_data(
+            restaurant_id=restaurant_id,
+            client_id=client_id,
+            client_secret=client_secret,
+            general_api_endpoint=base_url,
+            selected_categories=config.get("selected_categories") or None,
+            make_unique_categories=config.get("make_unique_categories") or None,
+        )
+    except (ValueError, OloMenuCompileError) as exc:
+        logger.error(
+            "[OloIntegration] Failed to fetch and compile menu",
+            extra={"restaurant_id": restaurant_id, "error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to fetch Olo menu: {exc}",
+            headers={"Content-Type": "application/json"},
+        ) from exc
+
+    compiled_config = {**(existing_config or {}), **config}
+    compiled_config.pop(OLO_RAW_MENU_BUNDLE_CONFIG_KEY, None)
+    compiled_config["restaurant_id"] = restaurant_id
+    compiled_config["menu_data"] = compiled_menu
+    compiled_config["menu_last_updated"] = _utc_now_isoformat()
+    compiled_config["menu_last_updated_source"] = (
+        OLO_MENU_LAST_UPDATED_SOURCE_MANAGE_APP
+    )
+
+    logger.info(
+        "[OloIntegration] Menu compiled for project integration",
+        extra={"restaurant_id": restaurant_id},
+    )
+    return compiled_config
 
 
 def _compile_toast_config(
@@ -519,6 +647,19 @@ async def create_project_integration(
                 )
             }
         )
+    elif project_integration.tool_name == "olo_v1" and project_integration.auto_fetch:
+        project_integration = await run_in_threadpool(
+            lambda: project_integration.model_copy(
+                update={
+                    "config": _fetch_and_compile_olo_config(
+                        integration_id=project_integration.integration_id,
+                        account_id=project.account_id,
+                        store_identifier=project_integration.store_identifier,
+                        config=project_integration.config,
+                    )
+                }
+            )
+        )
     elif project_integration.tool_name == "olo_v1":
         project_integration = project_integration.model_copy(
             update={"config": _compile_olo_config(project_integration.config)}
@@ -570,6 +711,30 @@ async def update_project_integration(
                     db_project_integration.config,
                 )
             }
+        )
+    should_auto_fetch_olo_menu = (
+        effective_tool_name == "olo_v1"
+        and project_integration.config is not None
+        and project_integration.config.get(OLO_AUTO_FETCH_MENU_DATA_CONFIG_KEY) is True
+    )
+    if should_auto_fetch_olo_menu:
+        store_identifier = (
+            project_integration.store_identifier
+            or db_project_integration.store_identifier
+        )
+        project_integration = await run_in_threadpool(
+            lambda: project_integration.model_copy(
+                update={
+                    "store_identifier": store_identifier,
+                    "config": _fetch_and_compile_olo_config(
+                        integration_id=integration_id,
+                        account_id=project.account_id,
+                        store_identifier=store_identifier,
+                        config=project_integration.config,
+                        existing_config=db_project_integration.config,
+                    ),
+                }
+            )
         )
     elif effective_tool_name == "olo_v1" and project_integration.config is not None:
         project_integration = project_integration.model_copy(

@@ -6,6 +6,10 @@ converting OLO API responses into structured, indexed menu data.
 """
 
 from ._implementation import OloMenuProcessor
-from .menu_data import compile_olo_menu_data
+from .menu_data import compile_olo_menu_data, fetch_and_compile_olo_menu_data
 
-__all__ = ["OloMenuProcessor", "compile_olo_menu_data"]
+__all__ = [
+    "OloMenuProcessor",
+    "compile_olo_menu_data",
+    "fetch_and_compile_olo_menu_data",
+]

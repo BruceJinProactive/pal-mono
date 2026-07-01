@@ -5,7 +5,10 @@ from typing import Any
 import pytest
 from pal_agents.menu_assets.olo import OloMenuCompileError
 
-from services.knowledge_service.olo import compile_olo_menu_data
+from services.knowledge_service.olo import (
+    compile_olo_menu_data,
+    fetch_and_compile_olo_menu_data,
+)
 
 
 def _raw_olo_bundle() -> dict[str, Any]:
@@ -74,3 +77,53 @@ def test_compile_olo_menu_data_returns_project_integration_menu_data() -> None:
 def test_compile_olo_menu_data_rejects_legacy_indexing_shape() -> None:
     with pytest.raises(OloMenuCompileError, match="menu"):
         compile_olo_menu_data({"categories": {"Burgers": []}})
+
+
+def test_fetch_and_compile_olo_menu_data_reuses_olo_api_client(monkeypatch) -> None:
+    raw_bundle = _raw_olo_bundle()
+    calls: list[tuple[str, str, str, str]] = []
+
+    def fake_get_restaurant_menu(
+        restaurant_id: str,
+        client_id: str,
+        client_secret: str,
+        general_api_endpoint: str,
+    ) -> dict[str, Any]:
+        calls.append((restaurant_id, client_id, client_secret, general_api_endpoint))
+        return raw_bundle
+
+    monkeypatch.setattr(
+        "services.knowledge_service.olo.menu_data.get_restaurant_menu",
+        fake_get_restaurant_menu,
+    )
+
+    compiled = fetch_and_compile_olo_menu_data(
+        restaurant_id="259950",
+        client_id="cid",
+        client_secret="secret",
+        general_api_endpoint="https://ordering.api.olo.com",
+        selected_categories=["Burgers"],
+        make_unique_categories=["Burgers"],
+    )
+
+    assert calls == [
+        ("259950", "cid", "secret", "https://ordering.api.olo.com"),
+    ]
+    assert [item["item_name"] for item in compiled["items"]] == [
+        "Burgers / Cheeseburger"
+    ]
+
+
+def test_fetch_and_compile_olo_menu_data_rejects_empty_download(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "services.knowledge_service.olo.menu_data.get_restaurant_menu",
+        lambda *_args, **_kwargs: None,
+    )
+
+    with pytest.raises(ValueError, match="Failed to fetch menu"):
+        fetch_and_compile_olo_menu_data(
+            restaurant_id="259950",
+            client_id="cid",
+            client_secret="secret",
+            general_api_endpoint="https://ordering.api.olo.com",
+        )
