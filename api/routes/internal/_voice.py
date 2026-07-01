@@ -222,6 +222,41 @@ def _resolve_greeting(first_message: str, timezone_str: str, language: str) -> s
     return first_message.replace("{{greet}}", greeting + " ")
 
 
+def _select_first_message(vc: object, project: object, timezone_str: str) -> str:
+    first_message = (
+        getattr(vc, "first_message", None) or "Hi, how can I help you today?"
+    )
+    raw_config = getattr(vc, "raw_config", None)
+    config = raw_config if isinstance(raw_config, dict) else {}
+    raw_after_hours = config.get("after_hours_first_message")
+    after_hours_message = (
+        raw_after_hours.strip() if isinstance(raw_after_hours, str) else ""
+    )
+    if not after_hours_message:
+        return first_message
+
+    project_business_hours = getattr(project, "business_hours", None)
+    business_hours = (
+        project_business_hours if isinstance(project_business_hours, dict) else None
+    )
+    project_store_hours = getattr(project, "store_hours", None)
+    store_hours = project_store_hours if isinstance(project_store_hours, str) else None
+    try:
+        store_status = message_service.compute_store_status(
+            business_hours,
+            store_hours,
+            timezone_str,
+            now=datetime.now(timezone.utc),
+        )
+    except Exception:
+        logger.exception("[_select_first_message] Failed to compute store status")
+        return first_message
+
+    return (
+        after_hours_message if store_status.get("status") == "closed" else first_message
+    )
+
+
 async def init_voice_call(
     request: VoiceInitRequest,
     session: AsyncSession,
@@ -361,7 +396,7 @@ async def init_voice_call(
     # --- Step 7: Resolve greeting ---
     caller_timezone = project_timezone or "America/Los_Angeles"
     first_message = _resolve_greeting(
-        vc.first_message or "Hi, how can I help you today?",
+        _select_first_message(vc, project, caller_timezone.strip()),
         caller_timezone.strip(),
         vc.language,
     )

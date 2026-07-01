@@ -30,6 +30,8 @@ def _make_project(**overrides) -> MagicMock:
     project = MagicMock()
     project.id = overrides.get("id", uuid.uuid4())
     project.timezone = overrides.get("timezone", "America/New_York")
+    project.business_hours = overrides.get("business_hours", None)
+    project.store_hours = overrides.get("store_hours", None)
     project.account = MagicMock()
     project.account.id = uuid.uuid4()
     return project
@@ -41,6 +43,7 @@ def _make_voice_config(**overrides) -> MagicMock:
     vc.voice_id = overrides.get("voice_id", "voice-abc")
     vc.speech_rate = overrides.get("speech_rate", SpeechRate.normal)
     vc.first_message = overrides.get("first_message", "Hello, how can I help?")
+    vc.raw_config = overrides.get("raw_config", {})
     vc.background_sound = overrides.get("background_sound", "office")
     vc.pronunciation_dict_id = overrides.get("pronunciation_dict_id", None)
     return vc
@@ -270,6 +273,73 @@ class TestInitVoiceCallSuccess:
         vc = _make_voice_config(first_message=None)
         result = await _run(_make_request(), _make_project(), _make_user(), [vc])
         assert result.first_message == "Hi, how can I help you today?"
+
+    @pytest.mark.asyncio
+    async def test_after_hours_first_message_used_when_store_is_closed(self) -> None:
+        project = _make_project(
+            business_hours={"regular_hours": {"periods": []}},
+            store_hours="Monday: 6:00 AM - 2:30 PM",
+        )
+        vc = _make_voice_config(
+            first_message="Normal intro",
+            raw_config={"after_hours_first_message": "Closed intro"},
+        )
+
+        with patch(
+            "api.routes.internal._voice.message_service.compute_store_status",
+            return_value={"status": "closed"},
+        ) as compute_store_status:
+            result = await _run(_make_request(), project, _make_user(), [vc])
+
+        assert result.first_message == "Closed intro"
+        compute_store_status.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_after_hours_first_message_ignored_when_store_is_open(self) -> None:
+        vc = _make_voice_config(
+            first_message="Normal intro",
+            raw_config={"after_hours_first_message": "Closed intro"},
+        )
+
+        with patch(
+            "api.routes.internal._voice.message_service.compute_store_status",
+            return_value={"status": "open"},
+        ):
+            result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+
+        assert result.first_message == "Normal intro"
+
+    @pytest.mark.asyncio
+    async def test_after_hours_status_error_falls_back_to_first_message(self) -> None:
+        vc = _make_voice_config(
+            first_message="Normal intro",
+            raw_config={"after_hours_first_message": "Closed intro"},
+        )
+
+        with patch(
+            "api.routes.internal._voice.message_service.compute_store_status",
+            side_effect=ValueError("bad hours"),
+        ):
+            result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+
+        assert result.first_message == "Normal intro"
+
+    @pytest.mark.asyncio
+    async def test_non_string_after_hours_message_falls_back_to_first_message(
+        self,
+    ) -> None:
+        vc = _make_voice_config(
+            first_message="Normal intro",
+            raw_config={"after_hours_first_message": {"text": "Closed intro"}},
+        )
+
+        with patch(
+            "api.routes.internal._voice.message_service.compute_store_status",
+        ) as compute_store_status:
+            result = await _run(_make_request(), _make_project(), _make_user(), [vc])
+
+        assert result.first_message == "Normal intro"
+        compute_store_status.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_null_background_sound(self) -> None:
