@@ -221,6 +221,7 @@ def _get_product_modifiers(
             client_id,
             client_secret,
             general_api_endpoint,
+            {"includedisabled": "false", "deliverymode": "delivery"},
         )
 
         # Process modifiers with recursive support
@@ -388,5 +389,57 @@ def get_restaurant_menu(
     except Exception as e:
         logger.debug(
             f"[olo._client.get_restaurant_menu] Error fetching menu for restaurant {restaurant_id}: {str(e)}"
+        )
+        return None
+
+
+def get_restaurant_menu_bundle(
+    restaurant_id: str,
+    client_id: str,
+    client_secret: str,
+    general_api_endpoint: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Fetch a compiler-ready Olo raw menu bundle.
+
+    This preserves the raw restaurant menu response under ``menu`` and fetches
+    product modifiers separately for the handle-backed menu compiler.
+    """
+    try:
+        raw_menu = make_signed_request(
+            f"/v1.1/restaurants/{restaurant_id}/menu",
+            client_id,
+            client_secret,
+            general_api_endpoint,
+            {"includedisabled": "false", "deliverymode": "delivery"},
+        )
+
+        modifiers_by_product_id: Dict[str, Any] = {}
+        for category_key in ("categories", "singleusecategories"):
+            for category in raw_menu.get(category_key, []):
+                for product in category.get("products", []):
+                    product_id = product.get("id")
+                    if product_id is None:
+                        continue
+                    modifiers = _get_product_modifiers(
+                        product_id,
+                        client_id,
+                        client_secret,
+                        general_api_endpoint,
+                    )
+                    if modifiers is None:
+                        logger.error(
+                            f"[olo._client.get_restaurant_menu_bundle] Failed to fetch modifiers for product {product_id} in restaurant {restaurant_id}"
+                        )
+                        return None
+                    modifiers_by_product_id[str(product_id)] = modifiers
+
+        return {
+            "restaurant_id": restaurant_id,
+            "menu": raw_menu,
+            "modifiers_by_product_id": modifiers_by_product_id,
+        }
+    except Exception as e:
+        logger.debug(
+            f"[olo._client.get_restaurant_menu_bundle] Error fetching menu bundle for restaurant {restaurant_id}: {e!s}"
         )
         return None

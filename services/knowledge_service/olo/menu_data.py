@@ -6,7 +6,7 @@ from typing import Any
 
 from pal_agents.menu_assets.olo import compile_olo_menu
 
-from ._client import get_restaurant_menu
+from ._client import get_restaurant_menu_bundle
 
 
 def compile_olo_menu_data(
@@ -36,17 +36,17 @@ def fetch_and_compile_olo_menu_data(
     max_depth: int = 8,
 ) -> dict[str, Any]:
     """Fetch an Olo menu with the existing Olo API client and compile it for config."""
-    raw_menu = get_restaurant_menu(
+    raw_bundle = get_restaurant_menu_bundle(
         restaurant_id,
         client_id,
         client_secret,
         general_api_endpoint,
     )
-    if not raw_menu:
+    if not raw_bundle:
         raise ValueError(f"Failed to fetch menu for restaurant {restaurant_id}")
 
     return compile_olo_menu_data(
-        raw_menu,
+        raw_bundle,
         selected_categories=selected_categories,
         make_unique_categories=make_unique_categories,
         max_depth=max_depth,
