@@ -4,7 +4,10 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
-from pal_agents.menu_assets.olo import OloMenuCompileError
+from pal_agents.menu_assets.olo import (
+    OloMenuCompileError,
+    build_olo_lookup_prompt_context_markdown,
+)
 from pal_agents.menu_assets.toast import (
     build_toast_lookup_prompt_context_markdown,
     compile_toast_menu_v2,
@@ -95,6 +98,51 @@ def _build_toast_product_info(config: dict | None) -> str | None:
         return None
 
     return build_toast_lookup_prompt_context_markdown(compiled_menu)
+
+
+def _build_olo_product_info(config: dict | None) -> str | None:
+    """Build Menu / Product Info text from compiled Olo menu_data."""
+    if not config:
+        return None
+
+    compiled_menu = config.get("menu_data")
+    if not isinstance(compiled_menu, dict):
+        return None
+
+    return build_olo_lookup_prompt_context_markdown(compiled_menu)
+
+
+def _build_olo_product_info_or_400(
+    project_id: uuid.UUID,
+    config: dict | None,
+) -> str | None:
+    try:
+        return _build_olo_product_info(config)
+    except Exception as exc:
+        logger.error(
+            "[OloIntegration] Failed to build product info",
+            extra={"project_id": str(project_id), "error": str(exc)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to build Olo product info",
+            headers={"Content-Type": "application/json"},
+        ) from exc
+
+
+def _update_project_product_info(
+    project_repository: db.ProjectRepository,
+    project_id: uuid.UUID,
+    product_info: str | None,
+) -> None:
+    if not product_info:
+        return
+
+    updated_project = project_repository.update_project(
+        project_id, product_info=product_info
+    )
+    if updated_project is None:
+        raise not_found_error(f"Project {project_id} not found")
 
 
 def _compile_olo_config(
@@ -614,6 +662,8 @@ async def create_project_integration(
     if not project:
         raise not_found_error(f"Project {project_id} not found")
 
+    product_info_to_update: str | None = None
+
     # Toast auto-fetch: pass account_id for cross-tenant scoping;
     # _compile_toast_config creates its own session (thread-safe).
     if project_integration.tool_name == "toast_v3" and project_integration.auto_fetch:
@@ -633,12 +683,7 @@ async def create_project_integration(
                 headers={"Content-Type": "application/json"},
             ) from exc
 
-        if product_info:
-            updated_project = project_repository.update_project(
-                project_id, product_info=product_info
-            )
-            if updated_project is None:
-                raise not_found_error(f"Project {project_id} not found")
+        product_info_to_update = product_info
     elif project_integration.tool_name == "toast_v3":
         project_integration = project_integration.model_copy(
             update={
@@ -660,14 +705,30 @@ async def create_project_integration(
                 }
             )
         )
+        product_info_to_update = _build_olo_product_info_or_400(
+            project_id, project_integration.config
+        )
     elif project_integration.tool_name == "olo_v1":
+        should_update_product_info = (
+            OLO_RAW_MENU_BUNDLE_CONFIG_KEY in project_integration.config
+        )
         project_integration = project_integration.model_copy(
             update={"config": _compile_olo_config(project_integration.config)}
         )
+        if should_update_product_info:
+            product_info_to_update = _build_olo_product_info_or_400(
+                project_id, project_integration.config
+            )
 
     created_project_integration = integration_service.create_project_integration(
         session=session,
         params=project_integration.to_project_integration_params(project_id),
+    )
+
+    _update_project_product_info(
+        project_repository,
+        project_id,
+        product_info_to_update,
     )
 
     return build_project_integration(created_project_integration)
@@ -703,6 +764,8 @@ async def update_project_integration(
     effective_tool_name = (
         project_integration.tool_name or db_project_integration.tool_name
     )
+    product_info_to_update: str | None = None
+
     if effective_tool_name == "toast_v3" and project_integration.config is not None:
         project_integration = project_integration.model_copy(
             update={
@@ -736,7 +799,13 @@ async def update_project_integration(
                 }
             )
         )
+        product_info_to_update = _build_olo_product_info_or_400(
+            project_id, project_integration.config
+        )
     elif effective_tool_name == "olo_v1" and project_integration.config is not None:
+        should_update_product_info = (
+            OLO_RAW_MENU_BUNDLE_CONFIG_KEY in project_integration.config
+        )
         project_integration = project_integration.model_copy(
             update={
                 "config": _compile_olo_config(
@@ -745,6 +814,10 @@ async def update_project_integration(
                 )
             }
         )
+        if should_update_product_info:
+            product_info_to_update = _build_olo_product_info_or_400(
+                project_id, project_integration.config
+            )
 
     updated_project_integration = integration_service.update_project_integration(
         session=session,
@@ -756,6 +829,12 @@ async def update_project_integration(
 
     if not updated_project_integration:
         raise not_found_error(f"Project integration {project_integration_id} not found")
+
+    _update_project_product_info(
+        project_repository,
+        project_id,
+        product_info_to_update,
+    )
 
     return build_project_integration(updated_project_integration)
 
