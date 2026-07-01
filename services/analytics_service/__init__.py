@@ -8,6 +8,7 @@ from api.schemas.admin.ordering_metrics import OrderingMetricsResponse
 from api.schemas.admin.ordering_revenue_metrics import OrderingRevenueMetricsResponse
 
 from . import _implementation
+from .schema import CallInsightsResponse
 
 
 async def get_reports(
@@ -122,6 +123,23 @@ async def get_ordering_revenue_metrics(
         session=session,
         account_id=account_id,
         account_name=account_name,
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=project_ids,
+    )
+
+
+def get_call_insights(
+    session: Session,
+    account_id: uuid.UUID,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    project_ids: list[uuid.UUID] | None = None,
+) -> CallInsightsResponse:
+    """Get call-level business review metrics for an account/project scope."""
+    return _implementation.get_call_insights(
+        session=session,
+        account_id=account_id,
         start_date=start_date,
         end_date=end_date,
         project_ids=project_ids,

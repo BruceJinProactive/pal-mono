@@ -282,6 +282,7 @@ from . import (
     _analytics,
     _auth,
     _billing,
+    _call_insights,
     _campaign,
     _capabilities,
     _catering,
@@ -325,6 +326,7 @@ if they are self explanatory.
 """
 
 admin_router = APIRouter(prefix=endpoints.ADMIN, tags=["Admin"])
+admin_router.include_router(_call_insights.call_insights_router)
 
 
 @admin_router.get("/me")

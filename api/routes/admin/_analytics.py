@@ -13,10 +13,12 @@ from api.schemas.admin.ordering_revenue_metrics import OrderingRevenueMetricsRes
 from services.account_service import get_account
 from services.analytics_service import (
     get_account_reports,
+    get_call_insights,
     get_ordering_metrics,
     get_ordering_revenue_metrics,
     get_reports,
 )
+from services.analytics_service.schema import CallInsightsResponse
 from utils.log import logger
 
 from . import UserContext
@@ -139,6 +141,29 @@ async def get_account_ordering_revenue_metrics(
         session=session,
         account_id=account.id,
         account_name=account_name,
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=project_ids,
+    )
+
+
+def get_account_call_insights(
+    account_name: str,
+    context: UserContext,
+    session: Session,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    project_ids: list[uuid.UUID] | None = None,
+) -> CallInsightsResponse:
+    """Get call-level business review insights for an account."""
+    del context
+    account = get_account(session, account_name)
+    if not account:
+        raise not_found_error(f"Account {account_name} not found.")
+
+    return get_call_insights(
+        session=session,
+        account_id=account.id,
         start_date=start_date,
         end_date=end_date,
         project_ids=project_ids,

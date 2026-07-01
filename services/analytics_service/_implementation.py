@@ -1,6 +1,7 @@
 import asyncio
 import uuid
-from datetime import date, datetime, timedelta
+from collections.abc import Sequence
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -26,6 +27,13 @@ from api.schemas.admin.ordering_revenue_metrics import (
     OrderingRevenueSummary,
     OrderingRevenueTimeSeriesPoint,
 )
+from services.analytics_service.schema import (
+    CallInsightMetricAvailability,
+    CallInsightRecord,
+    CallInsightsResponse,
+    CallInsightSummary,
+)
+from services.message_service._store_status import compute_store_status
 from utils.log import logger
 
 from ._utils import (
@@ -314,6 +322,48 @@ _CONVERSION_CONVERSATIONS_WITH_ORDERS_INDEX = 2
 _CONVERSION_TOTAL_SUBTOTAL_INDEX = 4
 
 
+_CALL_INSIGHT_AVAILABILITY = {
+    "individual_call_duration": CallInsightMetricAvailability(
+        available=True,
+        source="phone_calls.duration",
+    ),
+    "after_hours_calls": CallInsightMetricAvailability(
+        available=True,
+        source="projects.business_hours/store_hours + projects.timezone",
+        note="Null per call when project hours are missing or unparseable.",
+    ),
+    "spam_calls": CallInsightMetricAvailability(
+        available=False,
+        note="No persisted spam classification was found.",
+    ),
+    "internal_test_calls": CallInsightMetricAvailability(
+        available=True,
+        source="conversations.is_test",
+    ),
+    "new_repeat_callers": CallInsightMetricAvailability(
+        available=True,
+        source="users plus prior phone_calls for the same user",
+    ),
+    "transfer_requested_destination_reason": CallInsightMetricAvailability(
+        available=True,
+        source="conversations.transfer_purpose, phone_calls.transfer_reason_category, contacts/projects transfer destination",
+    ),
+    "concurrent_calls": CallInsightMetricAvailability(
+        available=True,
+        source="phone_calls.created_at + phone_calls.duration overlap within selected rows",
+    ),
+    "transfer_requested_at": CallInsightMetricAvailability(
+        available=True,
+        source="tool_call_records.created_at where tool_name contains call_transfer",
+        note="Null when the transfer was inferred from ended_reason but no tool-call record exists.",
+    ),
+    "transferred_call_answered": CallInsightMetricAvailability(
+        available=False,
+        note="No downstream transferred-leg answer status was found.",
+    ),
+}
+
+
 def _calculate_percentage(numerator: int, denominator: int) -> float | None:
     """Calculate a percentage with one decimal place, or None with no denominator."""
     if denominator <= 0:
@@ -370,6 +420,48 @@ def _to_group_date_key(value: object) -> str:
     if isinstance(value, (date, datetime, str)):
         return _to_date_key(value)
     return str(value)
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _calculate_after_hours(
+    started_at: datetime,
+    business_hours: dict | None,
+    store_hours: str | None,
+    timezone_name: str | None,
+) -> bool | None:
+    status = compute_store_status(
+        business_hours=business_hours,
+        store_hours_text=store_hours,
+        timezone_str=timezone_name,
+        now=_as_utc(started_at),
+    )
+    if status.get("status") == "hours_unknown":
+        return None
+    return not bool(status.get("is_open"))
+
+
+def _has_concurrent_call(
+    current_index: int,
+    call_windows: Sequence[tuple[uuid.UUID | None, datetime, datetime | None]],
+) -> bool:
+    project_id, started_at, ended_at = call_windows[current_index]
+    if project_id is None or ended_at is None:
+        return False
+    for other_index, (other_project_id, other_started_at, other_ended_at) in enumerate(
+        call_windows
+    ):
+        if other_index == current_index or other_ended_at is None:
+            continue
+        if other_project_id is None or project_id != other_project_id:
+            continue
+        if other_started_at < ended_at and other_ended_at > started_at:
+            return True
+    return False
 
 
 def _format_unknown_transfer_reason_label(reason: str) -> str:
@@ -722,6 +814,146 @@ async def get_ordering_metrics(
             accurate_order_call_count=accurate_order_call_count_summary,
             tool_error_order_call_count=tool_error_order_call_count_summary,
         ),
+    )
+
+
+def get_call_insights(
+    session: Session,
+    account_id: uuid.UUID,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    project_ids: list[uuid.UUID] | None = None,
+) -> CallInsightsResponse:
+    """Get call-level business review metrics for an account."""
+    start_date, end_date = validate_date_range(start_date, end_date)
+    analytics_repo = db.AnalyticsRepository(session)
+    rows = analytics_repo.get_call_insights(
+        start_date=start_date,
+        end_date=end_date,
+        filter_by=_build_ordering_filter_by(account_id, project_ids),
+    )
+
+    call_windows: list[tuple[uuid.UUID | None, datetime, datetime | None]] = []
+    for row in rows:
+        started_at = _as_utc(row[2])
+        duration = row[3]
+        ended_at = (
+            started_at + timedelta(seconds=float(duration))
+            if duration is not None
+            else None
+        )
+        call_windows.append((row[12], started_at, ended_at))
+
+    records: list[CallInsightRecord] = []
+    for index, row in enumerate(rows):
+        (
+            call_id,
+            conversation_id,
+            started_at,
+            duration,
+            ended_reason,
+            transfer_reason_category,
+            is_test,
+            transfer_purpose,
+            _user_id,
+            caller_identifiers,
+            account_row_id,
+            account_name,
+            project_id,
+            project_name,
+            timezone_name,
+            business_hours,
+            store_hours,
+            transfer_destination,
+            transfer_requested_at,
+            prior_call_count,
+        ) = row
+        ended_reason_value = getattr(ended_reason, "value", ended_reason)
+        is_transfer_requested = bool(
+            transfer_purpose
+            or transfer_reason_category
+            or transfer_requested_at
+            or ended_reason_value == "assistant_forwarded"
+        )
+        normalized_transfer_requested_at = (
+            _as_utc(transfer_requested_at)
+            if is_transfer_requested and transfer_requested_at
+            else None
+        )
+        is_after_hours = _calculate_after_hours(
+            started_at=started_at,
+            business_hours=business_hours,
+            store_hours=store_hours,
+            timezone_name=timezone_name,
+        )
+
+        records.append(
+            CallInsightRecord(
+                call_id=str(call_id),
+                conversation_id=conversation_id,
+                account_id=account_row_id,
+                account_name=str(account_name),
+                project_id=project_id,
+                project_name=project_name,
+                caller_identifiers=list(caller_identifiers or []),
+                started_at=_as_utc(started_at),
+                duration_seconds=(
+                    round(float(duration), 2) if duration is not None else None
+                ),
+                is_after_hours=is_after_hours,
+                is_spam=None,
+                is_internal_test=bool(is_test),
+                is_new_caller=int(prior_call_count or 0) == 0,
+                is_repeat_caller=int(prior_call_count or 0) > 0,
+                transfer_requested=is_transfer_requested,
+                transfer_destination=(
+                    transfer_destination if is_transfer_requested else None
+                ),
+                transfer_reason=(
+                    (transfer_reason_category or transfer_purpose)
+                    if is_transfer_requested
+                    else None
+                ),
+                transfer_requested_at=normalized_transfer_requested_at,
+                transferred_call_answered=None,
+                has_concurrent_call=_has_concurrent_call(index, call_windows),
+            )
+        )
+
+    durations = [
+        record.duration_seconds
+        for record in records
+        if record.duration_seconds is not None
+    ]
+    after_hours_values = [
+        record.is_after_hours for record in records if record.is_after_hours is not None
+    ]
+    summary = CallInsightSummary(
+        total_calls=len(records),
+        avg_duration_seconds=(
+            round(sum(durations) / len(durations), 2) if durations else None
+        ),
+        after_hours_calls=sum(1 for value in after_hours_values if value),
+        spam_calls=None,
+        internal_test_calls=sum(1 for record in records if record.is_internal_test),
+        new_callers=sum(1 for record in records if record.is_new_caller),
+        repeat_callers=sum(1 for record in records if record.is_repeat_caller),
+        transfer_requested_calls=sum(
+            1 for record in records if record.transfer_requested
+        ),
+        concurrent_calls=sum(1 for record in records if record.has_concurrent_call),
+        transfer_answered_calls=None,
+    )
+
+    if not after_hours_values:
+        summary.after_hours_calls = None
+
+    return CallInsightsResponse(
+        period_start=start_date,
+        period_end=end_date,
+        summary=summary,
+        metric_availability=_CALL_INSIGHT_AVAILABILITY,
+        calls=records,
     )
 
 

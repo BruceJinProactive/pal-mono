@@ -16,6 +16,7 @@ from api.routes.admin import (
     get_account_reports,
     get_reports,
 )
+from api.routes.admin._call_insights import get_account_call_insights
 from api.schemas.admin.analytics import GetAllReportsResponse
 from api.schemas.admin.ordering_metrics import (
     OrderingMetricsResponse,
@@ -29,6 +30,7 @@ from api.schemas.admin.ordering_revenue_metrics import (
     OrderingRevenuePaymentPath,
     OrderingRevenueSummary,
 )
+from services.analytics_service.schema import CallInsightsResponse, CallInsightSummary
 
 
 def _make_response() -> GetAllReportsResponse:
@@ -76,6 +78,27 @@ def _make_ordering_revenue_response() -> OrderingRevenueMetricsResponse:
             ),
         ),
         stores=[],
+    )
+
+
+def _make_call_insights_response() -> CallInsightsResponse:
+    return CallInsightsResponse(
+        period_start=datetime.datetime(2026, 5, 1, tzinfo=datetime.UTC),
+        period_end=datetime.datetime(2026, 5, 2, tzinfo=datetime.UTC),
+        summary=CallInsightSummary(
+            total_calls=0,
+            avg_duration_seconds=None,
+            after_hours_calls=None,
+            spam_calls=None,
+            internal_test_calls=0,
+            new_callers=0,
+            repeat_callers=0,
+            transfer_requested_calls=0,
+            concurrent_calls=0,
+            transfer_answered_calls=None,
+        ),
+        metric_availability={},
+        calls=[],
     )
 
 
@@ -237,6 +260,43 @@ async def test_get_account_ordering_revenue_metrics_route_delegates_to_analytics
     )
 
 
+def test_get_account_call_insights_route_delegates_to_analytics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = _make_call_insights_response()
+    mock_get_account_call_insights = MagicMock(return_value=response)
+    monkeypatch.setattr(
+        analytics_routes,
+        "get_account_call_insights",
+        mock_get_account_call_insights,
+    )
+
+    context = MagicMock()
+    session = MagicMock()
+    start_date = datetime.datetime(2026, 5, 1, tzinfo=datetime.UTC)
+    end_date = datetime.datetime(2026, 5, 2, tzinfo=datetime.UTC)
+    project_id = uuid.uuid4()
+
+    result = get_account_call_insights(
+        account_name="bobs-pizza",
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=[project_id],
+        context=context,
+        session=session,
+    )
+
+    assert result is response
+    mock_get_account_call_insights.assert_called_once_with(
+        account_name="bobs-pizza",
+        context=context,
+        session=session,
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=[project_id],
+    )
+
+
 @pytest.mark.asyncio
 async def test_analytics_get_account_ordering_metrics_delegates_to_service(
     monkeypatch: pytest.MonkeyPatch,
@@ -319,6 +379,48 @@ async def test_analytics_get_account_ordering_revenue_metrics_delegates_to_servi
         session=session,
         account_id=account_id,
         account_name="bobs-pizza",
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=[project_id],
+    )
+
+
+def test_analytics_get_account_call_insights_delegates_to_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account_id = uuid.uuid4()
+    account = MagicMock()
+    account.id = account_id
+    response = _make_call_insights_response()
+    mock_get_account = MagicMock(return_value=account)
+    mock_get_call_insights = MagicMock(return_value=response)
+    monkeypatch.setattr(analytics_routes, "get_account", mock_get_account)
+    monkeypatch.setattr(
+        analytics_routes,
+        "get_call_insights",
+        mock_get_call_insights,
+    )
+
+    context = MagicMock()
+    session = MagicMock()
+    start_date = datetime.datetime(2026, 5, 1, tzinfo=datetime.UTC)
+    end_date = datetime.datetime(2026, 5, 2, tzinfo=datetime.UTC)
+    project_id = uuid.uuid4()
+
+    result = analytics_routes.get_account_call_insights(
+        account_name="bobs-pizza",
+        context=context,
+        session=session,
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=[project_id],
+    )
+
+    assert result is response
+    mock_get_account.assert_called_once_with(session, "bobs-pizza")
+    mock_get_call_insights.assert_called_once_with(
+        session=session,
+        account_id=account_id,
         start_date=start_date,
         end_date=end_date,
         project_ids=[project_id],

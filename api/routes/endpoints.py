@@ -17,6 +17,7 @@ class ApiEndpoints:
     ADMIN_ACCOUNT_ORDERING_REVENUE_METRICS: str = (
         "/accounts/{account_name}/ordering-revenue-metrics"
     )
+    ADMIN_ACCOUNT_CALL_INSIGHTS: str = "/accounts/{account_name}/call-insights"
     CATERING_PROJECT_MENU_ITEMS: str = "/projects/{project_id}/menu-items"
     CATERING_PROJECT_MENU_ITEM: str = "/projects/{project_id}/menu-items/{menu_item_id}"
     TELEPHONY: str = "/telephony"

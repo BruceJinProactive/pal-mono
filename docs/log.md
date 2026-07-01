@@ -92,6 +92,14 @@ Chronological record of significant changes. Each entry links to the relevant do
 ## 2026-06-24
 
 - **Client onboarding handoff completion orchestration.** Post-signature sync completion now advances client onboarding to `handoff_created` once database, Folk, Slack, Notion, and Manage App jobs are complete, then to `activation_ready` after password setup is also recorded. -> `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
+- **Business review call insights endpoint.** Added
+  `GET /admin/accounts/{account_name}/call-insights` for account/project/date
+  scoped call records and summary metrics covering call duration, after-hours
+  inference, internal test calls, new/repeat callers, transfer request details,
+  transfer request timestamp, and concurrent-call inference. The response
+  includes metric availability metadata and marks spam classification plus
+  transferred-leg answered status unavailable because those signals are not
+  currently persisted.
 - **Anchor rule-event video lookup to rule-event time.** Rule-event video lookup
   now uses corrected `vision_rule_event.triggered_at` plus duration for the S3
   search window, while the linked state-change event only supplies the camera

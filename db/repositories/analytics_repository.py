@@ -1,29 +1,31 @@
 import datetime
 import time
 import uuid
-from typing import Literal
+from typing import Any, Literal, cast
 
 from sqlalchemy import Float, and_, case, exists, func, not_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from db.tables import (
     Account,
     Agent,
     AgentCapability,
+    Contact,
     Conversation,
     Integration,
     Message,
     Order,
     PhoneCall,
     Project,
+    ProjectContact,
     ProjectIntegration,
     Reservation,
     ToastCheckoutSession,
     ToolCallRecord,
     User,
 )
-from db.tables.types import IntegrationProvider, IntegrationType
+from db.tables.types import CallEndedReason, IntegrationProvider, IntegrationType
 from utils.log import logger
 
 # Turn threshold constants
@@ -45,6 +47,29 @@ ORDERING_TOOL_NAMES = (
     "toast_tool",
     "toast_v3",
 )
+
+CallInsightsRow = tuple[
+    str,
+    uuid.UUID,
+    datetime.datetime,
+    float | None,
+    CallEndedReason | str | None,
+    str | None,
+    bool | None,
+    str | None,
+    uuid.UUID,
+    list[str] | None,
+    uuid.UUID,
+    str,
+    uuid.UUID | None,
+    str | None,
+    str | None,
+    dict[str, Any] | None,
+    str | None,
+    str | None,
+    datetime.datetime | None,
+    int,
+]
 
 
 class AnalyticsRepository:
@@ -926,6 +951,112 @@ class AnalyticsRepository:
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error getting transfer reason distribution: {e}")
+            return []
+
+    def get_call_insights(
+        self,
+        start_date: datetime.datetime,
+        end_date: datetime.datetime,
+        filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+    ) -> list[CallInsightsRow]:
+        """Return call-level rows for business review call insights."""
+        try:
+            transfer_events = (
+                select(
+                    ToolCallRecord.conversation_id.label("conversation_id"),
+                    func.min(ToolCallRecord.created_at).label("transfer_requested_at"),
+                )
+                .where(ToolCallRecord.tool_name.ilike("%call_transfer%"))
+                .group_by(ToolCallRecord.conversation_id)
+                .subquery()
+            )
+
+            PriorPhoneCall = aliased(PhoneCall)
+            PriorConversation = aliased(Conversation)
+            prior_calls = (
+                select(func.count(PriorPhoneCall.id))
+                .select_from(PriorPhoneCall)
+                .join(
+                    PriorConversation,
+                    PriorPhoneCall.conversation_id == PriorConversation.id,
+                )
+                .where(
+                    PriorConversation.user_id == User.id,
+                    PriorPhoneCall.created_at < PhoneCall.created_at,
+                )
+            )
+
+            contact_destination = (
+                select(Contact.phone_number)
+                .select_from(Contact)
+                .join(ProjectContact, ProjectContact.contact_id == Contact.id)
+                .where(
+                    ProjectContact.project_id == Conversation.project_id,
+                    Contact.role == Conversation.transfer_purpose,
+                )
+                .order_by(Contact.created_at.asc())
+                .limit(1)
+                .scalar_subquery()
+            )
+
+            query = (
+                select(
+                    PhoneCall.call_id,
+                    PhoneCall.conversation_id,
+                    PhoneCall.created_at,
+                    PhoneCall.duration,
+                    PhoneCall.ended_reason,
+                    PhoneCall.transfer_reason_category,
+                    Conversation.is_test,
+                    Conversation.transfer_purpose,
+                    User.id.label("user_id"),
+                    User.channel_identifiers,
+                    Account.id.label("account_id"),
+                    Account.name.label("account_name"),
+                    Conversation.project_id,
+                    Project.name.label("project_name"),
+                    Project.timezone,
+                    Project.business_hours,
+                    Project.store_hours,
+                    func.coalesce(
+                        contact_destination,
+                        Project.transfer_phone_number,
+                    ).label("transfer_destination"),
+                    transfer_events.c.transfer_requested_at,
+                    prior_calls.scalar_subquery().label("prior_call_count"),
+                )
+                .select_from(PhoneCall)
+                .join(Conversation, PhoneCall.conversation_id == Conversation.id)
+                .join(User, Conversation.user_id == User.id)
+                .join(Account, User.account_id == Account.id)
+                .outerjoin(Project, Conversation.project_id == Project.id)
+                .outerjoin(
+                    transfer_events,
+                    transfer_events.c.conversation_id == Conversation.id,
+                )
+                .where(PhoneCall.created_at.between(start_date, end_date))
+            )
+
+            if filter_by and "account_id" in filter_by:
+                account_filter = filter_by["account_id"]
+                if isinstance(account_filter, list):
+                    query = query.where(User.account_id.in_(account_filter))
+                else:
+                    query = query.where(User.account_id == account_filter)
+
+            if filter_by and "project_id" in filter_by:
+                project_filter = filter_by["project_id"]
+                if isinstance(project_filter, list):
+                    query = query.where(Conversation.project_id.in_(project_filter))
+                else:
+                    query = query.where(Conversation.project_id == project_filter)
+
+            result = self.session.execute(query.order_by(PhoneCall.created_at.desc()))
+            return [cast(CallInsightsRow, tuple(row)) for row in result.all()]
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error getting call insights: {e}")
             return []
 
     def get_call_quality_distribution(
