@@ -6,6 +6,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-30
 
+- **Admin ordering revenue metrics API.** Added the account-scoped Admin Console
+  revenue dashboard response shape, including summary totals, daily time series,
+  payment-path split, fulfillment split, and store/project rows. ->
+  `docs/state/architecture.md`
 - **Customer RBAC role policy foundation.** Backend RBAC policy now defines `account_admin`, `store_owner`, and `store_member` as canonical customer roles; treats `owner` as the temporary Account Admin migration alias; treats legacy `manager` and `viewer` as temporary Store Member aliases; fails legacy `staff` closed for customer-console permissions; removes customer Agent writes; and writes new account-admin assignments with `account_admin`.
 - **Customer RBAC review hardening.** Kept legacy Operations route permissions while customer-facing routes still check `routine`, `execution`, and `submission` permissions; team removal now clears project role assignments for the account; and account-admin alias checks count distinct active users to avoid duplicate-role last-admin bypasses.
 - **Tool result cache preserves large lookup payloads.** Removed the Redis tool-result item byte cap so large lookup results remain available as `previous_tool_results` on later turns instead of being skipped after the initial tool call. Successful appends still log `item_bytes` for monitoring. -> `docs/plans/tool-result-elasticache-migration.md`

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from api.schemas.admin.analytics import GetAllReportsResponse
 from api.schemas.admin.ordering_metrics import OrderingMetricsResponse
+from api.schemas.admin.ordering_revenue_metrics import OrderingRevenueMetricsResponse
 
 from . import _implementation
 
@@ -97,6 +98,27 @@ async def get_ordering_metrics(
         OrderingMetricsResponse: Capability gate plus time-series metrics
     """
     return await _implementation.get_ordering_metrics(
+        session=session,
+        account_id=account_id,
+        account_name=account_name,
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=project_ids,
+    )
+
+
+async def get_ordering_revenue_metrics(
+    session: Session,
+    account_id: uuid.UUID,
+    account_name: str,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    project_ids: list[uuid.UUID] | None = None,
+) -> OrderingRevenueMetricsResponse:
+    """
+    Get ordering revenue dashboard metrics for an account/project scope.
+    """
+    return await _implementation.get_ordering_revenue_metrics(
         session=session,
         account_id=account_id,
         account_name=account_name,

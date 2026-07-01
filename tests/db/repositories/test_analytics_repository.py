@@ -23,6 +23,103 @@ def _make_session() -> MagicMock:
     return session
 
 
+def _make_mapping_session(rows: list[dict[str, object]] | None = None) -> MagicMock:
+    """Create a mock session for repository methods that consume mappings."""
+    session = MagicMock()
+    mock_result = MagicMock()
+    mock_result.mappings.return_value.all.return_value = rows or []
+    session.execute.return_value = mock_result
+    return session
+
+
+class TestGetOrderingRevenueMetrics:
+    """Tests for ordering revenue aggregation query construction."""
+
+    def test_returns_date_grouped_revenue_rows(self) -> None:
+        rows = [
+            {
+                "date": datetime(2026, 4, 1).date(),
+                "total_orders": 3,
+                "total_order_value": 75,
+                "palona_revenue": 50,
+                "payment_link_orders": 1,
+                "payment_link_revenue": 25,
+                "pay_in_store_orders": 1,
+                "pay_in_store_revenue": 25,
+                "takeout_orders": 2,
+                "takeout_revenue": 45,
+                "delivery_orders": 1,
+                "delivery_revenue": 30,
+            }
+        ]
+        session = _make_mapping_session(rows)
+        repo = AnalyticsRepository(session)
+        project_id = uuid.uuid4()
+
+        result = repo.get_ordering_revenue_metrics(
+            start_date=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_date=datetime(2026, 4, 30, tzinfo=timezone.utc),
+            group_by="date",
+            filter_by={"account_id": uuid.uuid4(), "project_id": project_id},
+        )
+
+        assert result == rows
+        session.execute.assert_called_once()
+        statement = session.execute.call_args.args[0]
+        query = str(statement)
+        params = statement.compile().params
+        assert "GROUP BY date(coalesce(orders.order_time, orders.created_at))" in query
+        assert "conversations.project_id = :project_id_1" in query
+        assert "toast_checkout_sessions" in query
+        assert "toast_checkout_sessions.order_external_id = orders.order_id" in query
+        assert "lower(toast_checkout_sessions.status) =" in query
+        assert "trim(orders.tracking_link)" in query
+        assert "orders.vendor = :vendor_1" in query
+        assert "orders.vendor = :vendor_2" in query
+        assert "orders.vendor = :vendor_3" in query
+        assert "NOT (orders.tracking_link IS NOT NULL" in query
+        assert "paid" in params.values()
+        assert "lower(coalesce(orders.fulfillment_strategy" in query
+        assert "delivery_revenue" in query
+
+    def test_returns_store_grouped_revenue_rows(self) -> None:
+        project_id = uuid.uuid4()
+        rows = [
+            {
+                "store_id": "toast-store-1",
+                "project_id": project_id,
+                "project_name": "Downtown",
+                "total_orders": 2,
+                "total_order_value": 60,
+                "palona_revenue": 60,
+                "payment_link_orders": 1,
+                "payment_link_revenue": 35,
+                "pay_in_store_orders": 1,
+                "pay_in_store_revenue": 25,
+                "takeout_orders": 1,
+                "takeout_revenue": 25,
+                "delivery_orders": 1,
+                "delivery_revenue": 35,
+            }
+        ]
+        session = _make_mapping_session(rows)
+        repo = AnalyticsRepository(session)
+
+        result = repo.get_ordering_revenue_metrics(
+            start_date=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_date=datetime(2026, 4, 30, tzinfo=timezone.utc),
+            group_by="store",
+            filter_by={"account_id": uuid.uuid4(), "project_id": [project_id]},
+        )
+
+        assert result == rows
+        session.execute.assert_called_once()
+        query = str(session.execute.call_args.args[0])
+        assert "orders.store_id" in query
+        assert "projects.name" in query
+        assert "conversations.project_id IN (__[POSTCOMPILE_project_id_1])" in query
+
+
 class TestGetCallsTimeSummaryExclusions:
     """Tests for exclusion filters in get_calls_time_summary."""
 

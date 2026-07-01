@@ -16,6 +16,16 @@ from api.schemas.admin.ordering_metrics import (
     OrderingMetricsResponse,
     OrderingMetricSummary,
 )
+from api.schemas.admin.ordering_revenue_metrics import (
+    OrderingRevenueAmountBucket,
+    OrderingRevenueFulfillment,
+    OrderingRevenueFulfillmentBucket,
+    OrderingRevenueMetricsResponse,
+    OrderingRevenuePaymentPath,
+    OrderingRevenueStore,
+    OrderingRevenueSummary,
+    OrderingRevenueTimeSeriesPoint,
+)
 from utils.log import logger
 
 from ._utils import (
@@ -242,6 +252,43 @@ def _empty_ordering_summary() -> OrderingMetricSummary:
     )
 
 
+def _empty_revenue_amount_bucket() -> OrderingRevenueAmountBucket:
+    return OrderingRevenueAmountBucket(orders=0, revenue=0.0)
+
+
+def _empty_revenue_fulfillment_bucket() -> OrderingRevenueFulfillmentBucket:
+    return OrderingRevenueFulfillmentBucket(orders=0, revenue=0.0, share=None)
+
+
+def _empty_ordering_revenue_response(
+    account_name: str,
+    ordering_enabled: bool,
+    period_start: str,
+    period_end: str,
+) -> OrderingRevenueMetricsResponse:
+    return OrderingRevenueMetricsResponse(
+        account_name=account_name,
+        ordering_enabled=ordering_enabled,
+        period_start=period_start,
+        period_end=period_end,
+        summary=OrderingRevenueSummary(
+            total_orders=0,
+            palona_revenue=0.0,
+            palona_aov=0.0,
+        ),
+        time_series=[],
+        payment_path=OrderingRevenuePaymentPath(
+            payment_link=_empty_revenue_amount_bucket(),
+            pay_in_store=_empty_revenue_amount_bucket(),
+        ),
+        fulfillment=OrderingRevenueFulfillment(
+            takeout=_empty_revenue_fulfillment_bucket(),
+            delivery=_empty_revenue_fulfillment_bucket(),
+        ),
+        stores=[],
+    )
+
+
 def _iter_date_keys(start_date: datetime, end_date: datetime) -> list[str]:
     """Return inclusive YYYY-MM-DD date keys for a datetime range."""
     current = start_date.date()
@@ -283,6 +330,35 @@ def _to_int(value: object) -> int:
     if isinstance(value, (float, Decimal)):
         return int(value)
     return int(str(value))
+
+
+def _to_float(value: object) -> float:
+    """Convert SQL aggregate values to float for JSON report output."""
+    if value is None:
+        return 0.0
+    if isinstance(value, (float, int, Decimal)):
+        return float(value)
+    return float(str(value))
+
+
+def _to_revenue_aov(total_value: float, total_orders: int) -> float:
+    return round(total_value / total_orders, 2) if total_orders > 0 else 0.0
+
+
+def _revenue_metric_values(row: dict[str, object]) -> dict[str, int | float]:
+    return {
+        "total_orders": _to_int(row["total_orders"]),
+        "total_order_value": _to_float(row["total_order_value"]),
+        "palona_revenue": _to_float(row["palona_revenue"]),
+        "payment_link_orders": _to_int(row["payment_link_orders"]),
+        "payment_link_revenue": _to_float(row["payment_link_revenue"]),
+        "pay_in_store_orders": _to_int(row["pay_in_store_orders"]),
+        "pay_in_store_revenue": _to_float(row["pay_in_store_revenue"]),
+        "takeout_orders": _to_int(row["takeout_orders"]),
+        "takeout_revenue": _to_float(row["takeout_revenue"]),
+        "delivery_orders": _to_int(row["delivery_orders"]),
+        "delivery_revenue": _to_float(row["delivery_revenue"]),
+    }
 
 
 def _to_group_date_key(value: object) -> str:
@@ -642,6 +718,185 @@ async def get_ordering_metrics(
             accurate_order_call_count=accurate_order_call_count_summary,
             tool_error_order_call_count=tool_error_order_call_count_summary,
         ),
+    )
+
+
+async def get_ordering_revenue_metrics(
+    session: Session,
+    account_id: uuid.UUID,
+    account_name: str,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    project_ids: list[uuid.UUID] | None = None,
+) -> OrderingRevenueMetricsResponse:
+    """
+    Get revenue dashboard metrics for Palona-created orders.
+
+    Payment path is inferred from paid orders with provider-specific payment
+    link evidence; pay_in_store is paid without that evidence.
+    """
+    start_date, end_date = validate_date_range(start_date, end_date)
+    analytics_repo = db.AnalyticsRepository(session)
+
+    ordering_enabled = analytics_repo.has_ordering_enabled(
+        account_id=account_id,
+        project_ids=project_ids,
+    )
+    period_start = start_date.date().isoformat()
+    period_end = end_date.date().isoformat()
+
+    if not ordering_enabled:
+        return _empty_ordering_revenue_response(
+            account_name=account_name,
+            ordering_enabled=False,
+            period_start=period_start,
+            period_end=period_end,
+        )
+
+    filter_by = _build_ordering_filter_by(account_id, project_ids)
+    daily_rows = analytics_repo.get_ordering_revenue_metrics(
+        start_date=start_date,
+        end_date=end_date,
+        group_by="date",
+        filter_by=filter_by,
+    )
+    daily_values_by_date: dict[str, dict[str, int | float]] = {}
+    for row in daily_rows:
+        daily_values_by_date[_to_group_date_key(row["date"])] = _revenue_metric_values(
+            row
+        )
+
+    summary_values: dict[str, int | float] = {
+        "total_orders": 0,
+        "total_order_value": 0.0,
+        "palona_revenue": 0.0,
+        "payment_link_orders": 0,
+        "payment_link_revenue": 0.0,
+        "pay_in_store_orders": 0,
+        "pay_in_store_revenue": 0.0,
+        "takeout_orders": 0,
+        "takeout_revenue": 0.0,
+        "delivery_orders": 0,
+        "delivery_revenue": 0.0,
+    }
+    for values in daily_values_by_date.values():
+        for key, value in values.items():
+            summary_values[key] += value
+
+    total_orders = int(summary_values["total_orders"])
+    total_order_value = float(summary_values["total_order_value"])
+
+    time_series = []
+    for date_key in _iter_date_keys(start_date, end_date):
+        values = daily_values_by_date.get(date_key)
+        if values is None:
+            time_series.append(
+                OrderingRevenueTimeSeriesPoint(
+                    date=date_key,
+                    total_orders=0,
+                    palona_revenue=0.0,
+                    palona_aov=0.0,
+                    payment_link_orders=0,
+                    payment_link_revenue=0.0,
+                    pay_in_store_orders=0,
+                    pay_in_store_revenue=0.0,
+                    takeout_orders=0,
+                    delivery_orders=0,
+                )
+            )
+            continue
+
+        day_orders = int(values["total_orders"])
+        day_value = float(values["total_order_value"])
+        time_series.append(
+            OrderingRevenueTimeSeriesPoint(
+                date=date_key,
+                total_orders=day_orders,
+                palona_revenue=round(float(values["palona_revenue"]), 2),
+                palona_aov=_to_revenue_aov(day_value, day_orders),
+                payment_link_orders=int(values["payment_link_orders"]),
+                payment_link_revenue=round(float(values["payment_link_revenue"]), 2),
+                pay_in_store_orders=int(values["pay_in_store_orders"]),
+                pay_in_store_revenue=round(float(values["pay_in_store_revenue"]), 2),
+                takeout_orders=int(values["takeout_orders"]),
+                delivery_orders=int(values["delivery_orders"]),
+            )
+        )
+
+    store_rows = analytics_repo.get_ordering_revenue_metrics(
+        start_date=start_date,
+        end_date=end_date,
+        group_by="store",
+        filter_by=filter_by,
+    )
+    stores: list[OrderingRevenueStore] = []
+    for row in store_rows:
+        store_id = str(row["store_id"]) if row["store_id"] is not None else None
+        project_id = str(row["project_id"]) if row["project_id"] is not None else None
+        project_name = (
+            str(row["project_name"]) if row["project_name"] is not None else None
+        )
+        values = _revenue_metric_values(row)
+        store_orders = int(values["total_orders"])
+        store_value = float(values["total_order_value"])
+        stores.append(
+            OrderingRevenueStore(
+                store_id=store_id,
+                store_name=project_name or store_id or "Unknown store",
+                project_id=project_id,
+                project_name=project_name,
+                orders=store_orders,
+                palona_revenue=round(float(values["palona_revenue"]), 2),
+                palona_aov=_to_revenue_aov(store_value, store_orders),
+                payment_link=OrderingRevenueAmountBucket(
+                    orders=int(values["payment_link_orders"]),
+                    revenue=round(float(values["payment_link_revenue"]), 2),
+                ),
+                pay_in_store=OrderingRevenueAmountBucket(
+                    orders=int(values["pay_in_store_orders"]),
+                    revenue=round(float(values["pay_in_store_revenue"]), 2),
+                ),
+            )
+        )
+
+    return OrderingRevenueMetricsResponse(
+        account_name=account_name,
+        ordering_enabled=True,
+        period_start=period_start,
+        period_end=period_end,
+        summary=OrderingRevenueSummary(
+            total_orders=total_orders,
+            palona_revenue=round(float(summary_values["palona_revenue"]), 2),
+            palona_aov=_to_revenue_aov(total_order_value, total_orders),
+        ),
+        time_series=time_series,
+        payment_path=OrderingRevenuePaymentPath(
+            payment_link=OrderingRevenueAmountBucket(
+                orders=int(summary_values["payment_link_orders"]),
+                revenue=round(float(summary_values["payment_link_revenue"]), 2),
+            ),
+            pay_in_store=OrderingRevenueAmountBucket(
+                orders=int(summary_values["pay_in_store_orders"]),
+                revenue=round(float(summary_values["pay_in_store_revenue"]), 2),
+            ),
+        ),
+        fulfillment=OrderingRevenueFulfillment(
+            takeout=OrderingRevenueFulfillmentBucket(
+                orders=int(summary_values["takeout_orders"]),
+                revenue=round(float(summary_values["takeout_revenue"]), 2),
+                share=_calculate_percentage(
+                    int(summary_values["takeout_orders"]), total_orders
+                ),
+            ),
+            delivery=OrderingRevenueFulfillmentBucket(
+                orders=int(summary_values["delivery_orders"]),
+                revenue=round(float(summary_values["delivery_revenue"]), 2),
+                share=_calculate_percentage(
+                    int(summary_values["delivery_orders"]), total_orders
+                ),
+            ),
+        ),
+        stores=stores,
     )
 
 

@@ -12,6 +12,7 @@ from api.routes.admin import _analytics as analytics_routes
 from api.routes.admin import (
     admin_router,
     get_account_ordering_metrics,
+    get_account_ordering_revenue_metrics,
     get_account_reports,
     get_reports,
 )
@@ -19,6 +20,14 @@ from api.schemas.admin.analytics import GetAllReportsResponse
 from api.schemas.admin.ordering_metrics import (
     OrderingMetricsResponse,
     OrderingMetricSummary,
+)
+from api.schemas.admin.ordering_revenue_metrics import (
+    OrderingRevenueAmountBucket,
+    OrderingRevenueFulfillment,
+    OrderingRevenueFulfillmentBucket,
+    OrderingRevenueMetricsResponse,
+    OrderingRevenuePaymentPath,
+    OrderingRevenueSummary,
 )
 
 
@@ -41,6 +50,32 @@ def _make_ordering_response() -> OrderingMetricsResponse:
             accurate_order_call_count=0,
             tool_error_order_call_count=0,
         ),
+    )
+
+
+def _make_ordering_revenue_response() -> OrderingRevenueMetricsResponse:
+    return OrderingRevenueMetricsResponse(
+        account_name="bobs-pizza",
+        ordering_enabled=True,
+        period_start="2026-05-01",
+        period_end="2026-05-02",
+        summary=OrderingRevenueSummary(
+            total_orders=0,
+            palona_revenue=0.0,
+            palona_aov=0.0,
+        ),
+        time_series=[],
+        payment_path=OrderingRevenuePaymentPath(
+            payment_link=OrderingRevenueAmountBucket(orders=0, revenue=0.0),
+            pay_in_store=OrderingRevenueAmountBucket(orders=0, revenue=0.0),
+        ),
+        fulfillment=OrderingRevenueFulfillment(
+            takeout=OrderingRevenueFulfillmentBucket(orders=0, revenue=0.0, share=None),
+            delivery=OrderingRevenueFulfillmentBucket(
+                orders=0, revenue=0.0, share=None
+            ),
+        ),
+        stores=[],
     )
 
 
@@ -165,6 +200,44 @@ async def test_get_account_ordering_metrics_route_delegates_to_analytics(
 
 
 @pytest.mark.asyncio
+async def test_get_account_ordering_revenue_metrics_route_delegates_to_analytics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = _make_ordering_revenue_response()
+    mock_get_account_ordering_revenue_metrics = AsyncMock(return_value=response)
+    monkeypatch.setattr(
+        analytics_routes,
+        "get_account_ordering_revenue_metrics",
+        mock_get_account_ordering_revenue_metrics,
+    )
+
+    context = MagicMock()
+    session = MagicMock()
+    start_date = datetime.datetime(2026, 5, 1, tzinfo=datetime.UTC)
+    end_date = datetime.datetime(2026, 5, 2, tzinfo=datetime.UTC)
+    project_id = uuid.uuid4()
+
+    result = await get_account_ordering_revenue_metrics(
+        account_name="bobs-pizza",
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=[project_id],
+        context=context,
+        session=session,
+    )
+
+    assert result is response
+    mock_get_account_ordering_revenue_metrics.assert_awaited_once_with(
+        account_name="bobs-pizza",
+        context=context,
+        session=session,
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=[project_id],
+    )
+
+
+@pytest.mark.asyncio
 async def test_analytics_get_account_ordering_metrics_delegates_to_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -199,6 +272,50 @@ async def test_analytics_get_account_ordering_metrics_delegates_to_service(
     assert result is response
     mock_get_account.assert_called_once_with(session, "bobs-pizza")
     mock_get_ordering_metrics.assert_awaited_once_with(
+        session=session,
+        account_id=account_id,
+        account_name="bobs-pizza",
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=[project_id],
+    )
+
+
+@pytest.mark.asyncio
+async def test_analytics_get_account_ordering_revenue_metrics_delegates_to_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account_id = uuid.uuid4()
+    account = MagicMock()
+    account.id = account_id
+    response = _make_ordering_revenue_response()
+    mock_get_account = MagicMock(return_value=account)
+    mock_get_ordering_revenue_metrics = AsyncMock(return_value=response)
+    monkeypatch.setattr(analytics_routes, "get_account", mock_get_account)
+    monkeypatch.setattr(
+        analytics_routes,
+        "get_ordering_revenue_metrics",
+        mock_get_ordering_revenue_metrics,
+    )
+
+    context = MagicMock()
+    session = MagicMock()
+    start_date = datetime.datetime(2026, 5, 1, tzinfo=datetime.UTC)
+    end_date = datetime.datetime(2026, 5, 2, tzinfo=datetime.UTC)
+    project_id = uuid.uuid4()
+
+    result = await analytics_routes.get_account_ordering_revenue_metrics(
+        account_name="bobs-pizza",
+        context=context,
+        session=session,
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=[project_id],
+    )
+
+    assert result is response
+    mock_get_account.assert_called_once_with(session, "bobs-pizza")
+    mock_get_ordering_revenue_metrics.assert_awaited_once_with(
         session=session,
         account_id=account_id,
         account_name="bobs-pizza",

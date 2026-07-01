@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Last updated:** 2026-06-24
+> **Last updated:** 2026-06-30
 
 ## Quick Reference
 
@@ -118,6 +118,46 @@ pal-mono is a multi-tenant conversational AI platform designed for restaurant an
 - Request validation with Pydantic
 - Async request handling throughout
 - RBAC-based authorization via `require_account_permission` / `require_project_permission`
+
+#### Admin Ordering Revenue Metrics
+
+`GET /v1/admin/accounts/{account_name}/ordering-revenue-metrics` returns the
+Admin Console revenue dashboard payload for an account, optionally filtered by
+`project_ids`, `start_date`, and `end_date`. The response schema is
+`OrderingRevenueMetricsResponse` from
+`api/schemas/admin/ordering_revenue_metrics.py`.
+
+Top-level response fields:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `account_name` | `str` | Account identifier from the route. |
+| `ordering_enabled` | `bool` | Capability/integration gate for the selected account/project scope. |
+| `period_start` / `period_end` | `str` | Inclusive selected period in `YYYY-MM-DD` format. |
+| `summary` | `OrderingRevenueSummary` | Period totals. |
+| `time_series` | `list[OrderingRevenueTimeSeriesPoint]` | Continuous daily chart rows; missing days are zero-filled. |
+| `payment_path` | `OrderingRevenuePaymentPath` | Paid order split by inferred payment path. |
+| `fulfillment` | `OrderingRevenueFulfillment` | Created order split by fulfillment strategy. |
+| `stores` | `list[OrderingRevenueStore]` | Store/project-level rows. |
+
+Nested models:
+
+| Model | Fields |
+|-------|--------|
+| `OrderingRevenueSummary` | `total_orders`, `palona_revenue`, `palona_aov` |
+| `OrderingRevenueTimeSeriesPoint` | `date`, `total_orders`, `palona_revenue`, `palona_aov`, `payment_link_orders`, `payment_link_revenue`, `pay_in_store_orders`, `pay_in_store_revenue`, `takeout_orders`, `delivery_orders` |
+| `OrderingRevenuePaymentPath` | `payment_link`, `pay_in_store`, each an `OrderingRevenueAmountBucket` with `orders` and `revenue` |
+| `OrderingRevenueFulfillment` | `takeout`, `delivery`, each an `OrderingRevenueFulfillmentBucket` with `orders`, `revenue`, and `share` |
+| `OrderingRevenueStore` | `store_id`, `store_name`, `project_id`, `project_name`, `orders`, `palona_revenue`, `palona_aov`, `payment_link`, `pay_in_store` |
+
+Revenue semantics:
+
+- `palona_revenue` counts paid Palona-created order value.
+- Payment-link revenue is inferred from paid orders with `tracking_link`.
+- Pay-in-store revenue is inferred from paid orders without `tracking_link`.
+- `palona_aov` divides created order value by created order count.
+- Fulfillment groups `takeout`, `take_out`, `pickup`, and `pick_up` as takeout;
+  `delivery` is reported separately.
 
 ### 2. Agent System (`/agent`)
 

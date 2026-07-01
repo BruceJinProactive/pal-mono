@@ -1,8 +1,9 @@
 import datetime
 import time
 import uuid
+from typing import Literal
 
-from sqlalchemy import Float, case, exists, func, not_, or_, select
+from sqlalchemy import Float, and_, case, exists, func, not_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -18,10 +19,11 @@ from db.tables import (
     Project,
     ProjectIntegration,
     Reservation,
+    ToastCheckoutSession,
     ToolCallRecord,
     User,
 )
-from db.tables.types import IntegrationType
+from db.tables.types import IntegrationProvider, IntegrationType
 from utils.log import logger
 
 # Turn threshold constants
@@ -1207,4 +1209,159 @@ class AnalyticsRepository:
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error getting conversion summary: {e}")
+            return []
+
+    def get_ordering_revenue_metrics(
+        self,
+        start_date: datetime.datetime,
+        end_date: datetime.datetime,
+        group_by: Literal["date", "store"] | None = None,
+        filter_by: dict[str, uuid.UUID | list[uuid.UUID]] | None = None,
+    ) -> list[dict[str, object]]:
+        """
+        Get revenue metrics for Palona-created orders.
+        """
+        try:
+            start_time = time.time()
+            order_date = func.date(func.coalesce(Order.order_time, Order.created_at))
+            paid_order = func.lower(Order.status) == "paid"
+            has_tracking_link = and_(
+                Order.tracking_link.isnot(None),
+                func.length(func.trim(Order.tracking_link)) > 0,
+            )
+            paid_toast_checkout_order = and_(
+                Order.vendor == IntegrationProvider.toast,
+                exists(
+                    select(1)
+                    .select_from(ToastCheckoutSession)
+                    .where(
+                        ToastCheckoutSession.conversation_id == Order.conversation_id,
+                        ToastCheckoutSession.order_external_id == Order.order_id,
+                        func.lower(ToastCheckoutSession.status) == "paid",
+                    )
+                ),
+            )
+            has_payment_link_evidence = or_(
+                has_tracking_link,
+                paid_toast_checkout_order,
+            )
+            adora_pay_in_store_order = and_(
+                Order.vendor == IntegrationProvider.adora,
+                not_(has_tracking_link),
+            )
+            toast_pay_in_store_order = and_(
+                Order.vendor == IntegrationProvider.toast,
+                paid_order,
+                not_(has_payment_link_evidence),
+            )
+            payment_link_order = and_(paid_order, has_payment_link_evidence)
+            pay_in_store_order = or_(adora_pay_in_store_order, toast_pay_in_store_order)
+            palona_revenue_order = or_(payment_link_order, pay_in_store_order)
+            fulfillment = func.lower(func.coalesce(Order.fulfillment_strategy, ""))
+            takeout_order = fulfillment.in_(
+                ("takeout", "take_out", "pickup", "pick_up")
+            )
+            delivery_order = fulfillment == "delivery"
+
+            select_fields = []
+            group_fields = []
+
+            if group_by == "date":
+                date_field = order_date.label("date")
+                select_fields.append(date_field)
+                group_fields.append(date_field)
+            elif group_by == "store":
+                select_fields.extend(
+                    [
+                        Order.store_id.label("store_id"),
+                        Conversation.project_id.label("project_id"),
+                        Project.name.label("project_name"),
+                    ]
+                )
+                group_fields.extend(
+                    [Order.store_id, Conversation.project_id, Project.name]
+                )
+
+            select_fields.extend(
+                [
+                    func.count(Order.id).label("total_orders"),
+                    func.coalesce(func.sum(Order.subtotal), 0).label(
+                        "total_order_value"
+                    ),
+                    func.coalesce(
+                        func.sum(case((palona_revenue_order, Order.subtotal), else_=0)),
+                        0,
+                    ).label("palona_revenue"),
+                    func.count(case((payment_link_order, Order.id), else_=None)).label(
+                        "payment_link_orders"
+                    ),
+                    func.coalesce(
+                        func.sum(case((payment_link_order, Order.subtotal), else_=0)),
+                        0,
+                    ).label("payment_link_revenue"),
+                    func.count(case((pay_in_store_order, Order.id), else_=None)).label(
+                        "pay_in_store_orders"
+                    ),
+                    func.coalesce(
+                        func.sum(case((pay_in_store_order, Order.subtotal), else_=0)),
+                        0,
+                    ).label("pay_in_store_revenue"),
+                    func.count(case((takeout_order, Order.id), else_=None)).label(
+                        "takeout_orders"
+                    ),
+                    func.coalesce(
+                        func.sum(case((takeout_order, Order.subtotal), else_=0)),
+                        0,
+                    ).label("takeout_revenue"),
+                    func.count(case((delivery_order, Order.id), else_=None)).label(
+                        "delivery_orders"
+                    ),
+                    func.coalesce(
+                        func.sum(case((delivery_order, Order.subtotal), else_=0)),
+                        0,
+                    ).label("delivery_revenue"),
+                ]
+            )
+
+            query = (
+                select(*select_fields)
+                .select_from(Order)
+                .join(Conversation, Order.conversation_id == Conversation.id)
+                .join(User, Conversation.user_id == User.id)
+                .where(
+                    func.coalesce(Order.order_time, Order.created_at).between(
+                        start_date, end_date
+                    ),
+                    ~Conversation.is_test,
+                    Order.subtotal.isnot(None),
+                    exists(
+                        select(1)
+                        .select_from(Integration)
+                        .where(
+                            Integration.account_id == User.account_id,
+                            Integration.integration_type == IntegrationType.pos,
+                        )
+                    ),
+                )
+            )
+            if group_by == "store":
+                query = query.outerjoin(Project, Conversation.project_id == Project.id)
+
+            query = self._apply_filters(query, filter_by)
+
+            if group_fields:
+                query = query.group_by(*group_fields)
+
+            result = self.session.execute(query)
+            rows = [dict(row) for row in result.mappings().all()]
+
+            elapsed = time.time() - start_time
+            logger.info(
+                "AnalyticsRepository: Ordering revenue metrics query executed in "
+                f"{elapsed:.3f}s, returned {len(rows)} rows"
+            )
+            return rows
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Error getting ordering revenue metrics: {e}")
             return []

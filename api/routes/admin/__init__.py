@@ -134,6 +134,7 @@ from api.schemas.admin.onboarding import (
     SigninGoogleUserResponse,
 )
 from api.schemas.admin.ordering_metrics import OrderingMetricsResponse
+from api.schemas.admin.ordering_revenue_metrics import OrderingRevenueMetricsResponse
 from api.schemas.admin.phone_number import (
     EnhancedReleaseProjectNumberRequest,
     EnhancedReleaseProjectNumberResponse,
@@ -4038,6 +4039,43 @@ async def get_account_ordering_metrics(
     Retrieve ordering dashboard metrics and ordering capability status.
     """
     return await _analytics.get_account_ordering_metrics(
+        account_name=account_name,
+        context=context,
+        session=session,
+        start_date=start_date,
+        end_date=end_date,
+        project_ids=project_ids,
+    )
+
+
+@admin_router.get(
+    endpoints.ADMIN_ACCOUNT_ORDERING_REVENUE_METRICS,
+    status_code=status.HTTP_200_OK,
+    responses={404: {"model": ErrorResponse}},
+)
+async def get_account_ordering_revenue_metrics(
+    account_name: str,
+    start_date: datetime | None = Query(
+        default=None,
+        description="Start date for ordering revenue metrics. If not provided, defaults to 7 days ago.",
+    ),
+    end_date: datetime | None = Query(
+        default=None,
+        description="End date for ordering revenue metrics. If not provided, defaults to today.",
+    ),
+    project_ids: Optional[list[uuid.UUID]] = Query(
+        default=None,
+        description="Optional list of project IDs to filter ordering revenue metrics by.",
+    ),
+    context: UserContext = Depends(
+        require_account_permission("account.read", authenticate_user)
+    ),
+    session: Session = Depends(db.get_db),
+) -> OrderingRevenueMetricsResponse:
+    """
+    Retrieve ordering revenue metrics and ordering capability status.
+    """
+    return await _analytics.get_account_ordering_revenue_metrics(
         account_name=account_name,
         context=context,
         session=session,
