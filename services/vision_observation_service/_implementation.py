@@ -3,8 +3,10 @@ from __future__ import annotations
 import ast
 import asyncio
 import base64
+import inspect
 import uuid
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import is_dataclass, replace
 from datetime import datetime, timezone
 from io import BytesIO
@@ -12,6 +14,7 @@ from typing import Any
 
 from PIL import Image, ImageOps
 from redis.exceptions import RedisError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.operations.vision_observation import (
@@ -30,6 +33,7 @@ from db.pal_repository import (
 from db.pal_repository.data_classes.vision_state_change_event import (
     VisionStateChangeEventData,
 )
+from db.repositories import ProjectRepositoryAsync
 from services.asset_service._constants import AWS_REGION
 from services.asset_service._utils import AWS_ASSET_BUCKET_NAME, init_s3
 from services.monitoring_service._providers import (
@@ -56,6 +60,10 @@ from services.vision_observation_service._smoothing_cache import (
 )
 from services.vision_observation_service._trace_sink import (
     schedule_vision_inference_trace,
+)
+from services.vision_observation_service._tracing import (
+    langfuse_vision_observation_span,
+    update_langfuse_vision_observation,
 )
 from services.vision_observation_service._workflow import (
     RULE_TYPE_WORKFLOWS,
@@ -339,6 +347,33 @@ def _entities_include_state(
             if state_name in group_info.get("state_names", []):
                 return True
     return False
+
+
+async def _get_project_trace_names(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+) -> tuple[str, str]:
+    try:
+        project = await ProjectRepositoryAsync(session).get_project(project_id)
+        if inspect.isawaitable(project):
+            project = await project
+    except SQLAlchemyError:
+        with suppress(Exception):
+            await session.rollback()
+        logger.warning(
+            "[Vision Observation] Failed to load project trace metadata",
+            extra={"project_id": str(project_id)},
+            exc_info=True,
+        )
+        return "unknown", "unknown"
+
+    project_name = getattr(project, "name", None)
+    account = getattr(project, "account", None)
+    account_name = getattr(account, "name", None)
+    return (
+        account_name if isinstance(account_name, str) and account_name else "unknown",
+        project_name if isinstance(project_name, str) and project_name else "unknown",
+    )
 
 
 def _build_system_prompt(
@@ -898,6 +933,17 @@ async def generate_observation(
         return None
 
     camera_config_id = config.id
+    project_id = config.project_id
+    structured_observations_enabled = config.structured_observations_enabled
+    llm_prompt = config.llm_prompt
+    llm_provider_name = config.llm_provider
+    llm_model = config.llm_model
+    reference_image_configs = list(config.reference_images or [])
+
+    account_name, project_name = await _get_project_trace_names(
+        session,
+        project_id,
+    )
 
     mapping_repo = VisionCameraEntityRepository(session)
     mappings = await mapping_repo.list_by_camera(camera_config_id)
@@ -978,16 +1024,14 @@ async def generate_observation(
         )
         return None
 
-    include_observations = (
-        getattr(config, "structured_observations_enabled", False) is True
-    )
+    include_observations = structured_observations_enabled is True
     response_schema = _build_entity_state_schema(
         entities_with_states,
         include_observations=include_observations,
     )
 
     system_prompt = _build_system_prompt(
-        user_prompt=config.llm_prompt,
+        user_prompt=llm_prompt,
         entity_type_definitions=entity_type_definitions,
         entities_with_states=entities_with_states,
         include_observations=include_observations,
@@ -1004,11 +1048,6 @@ async def generate_observation(
                 "schema": response_schema,
             },
         }
-
-    llm_prompt = config.llm_prompt
-    llm_provider_name = config.llm_provider
-    llm_model = config.llm_model
-    reference_image_configs = list(config.reference_images or [])
 
     await session.rollback()
     logger.info(
@@ -1107,15 +1146,53 @@ async def generate_observation(
         },
     )
 
+    trace_input = {
+        "account_name": account_name,
+        "project_name": project_name,
+        "system_prompt": system_prompt,
+        "analysis_task": llm_prompt,
+        "response_schema": response_schema,
+        "image_url": image_url,
+        "reference_image_count": len(reference_images),
+        "entity_count": len(entities_with_states),
+        "entities": [
+            {
+                "name": entity.get("name"),
+                "type_name": entity.get("type_name"),
+                "state_names": entity.get("state_names"),
+                "state_definition_groups": entity.get("state_definition_groups"),
+            }
+            for entity in entities_with_states
+        ],
+    }
+
+    def call_llm_with_langfuse_trace() -> dict[str, Any]:
+        with langfuse_vision_observation_span(
+            camera_id=camera_id,
+            camera_config_id=camera_config_id,
+            account_name=account_name,
+            project_name=project_name,
+            llm_provider=llm_provider_name,
+            llm_model=llm_model,
+            is_test=is_test,
+            input_payload=trace_input,
+        ) as observation:
+            result = llm_provider.analyze_image(
+                system_prompt,
+                llm_prompt,
+                reference_images,
+                camera_image_base64,
+                response_format,
+            )
+            update_langfuse_vision_observation(
+                observation,
+                output=result.get("result", {}),
+                token_usage=result.get("token_usage", {}),
+            )
+            return result
+
     try:
-        llm_result = await asyncio.to_thread(
-            llm_provider.analyze_image,
-            system_prompt,
-            llm_prompt,
-            reference_images,
-            camera_image_base64,
-            response_format,
-        )
+        llm_result = await asyncio.to_thread(call_llm_with_langfuse_trace)
     except Exception as e:
         if _is_unprocessable_image_error(e):
             gemini_refusal_reason = _gemini_refusal_reason(e)

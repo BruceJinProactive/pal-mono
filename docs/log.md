@@ -24,6 +24,11 @@ Chronological record of significant changes. Each entry links to the relevant do
 - **Customer RBAC review hardening.** Kept legacy Operations route permissions while customer-facing routes still check `routine`, `execution`, and `submission` permissions; team removal now clears project role assignments for the account; and account-admin alias checks count distinct active users to avoid duplicate-role last-admin bypasses.
 - **Tool result cache preserves large lookup payloads.** Removed the Redis tool-result item byte cap so large lookup results remain available as `previous_tool_results` on later turns instead of being skipped after the initial tool call. Successful appends still log `item_bytes` for monitoring. -> `docs/plans/tool-result-elasticache-migration.md`
 
+- **Vision Langfuse LLM span.** Vision observation LLM calls now open a
+  best-effort Langfuse span using `LANGFUSE_VISION_PUBLIC_KEY` /
+  `LANGFUSE_VISION_SECRET_KEY`, with account/project names, provider/model,
+  lightweight prompt/schema input, parsed output, and model token usage attached.
+
 - **Client onboarding Folk sync is update-only.** Manage App client account creation keeps the Folk company ID optional, and post-signature Folk sync updates the linked company when present instead of creating a new Folk company. Missing Folk company links now skip the Folk update while allowing the rest of handoff completion to continue. -> `docs/plans/onboarding/contract-account-tos-handoff-prd.md`, `docs/plans/onboarding/contract-account-tos-handoff-implementation-plan.md`
 
 - **Admin conversations respect selected location when pinning.** Project-scoped conversation lists now ignore deep-linked conversations from other projects in the same account, preventing the Admin Console location selector from jumping to another store when opening Conversations.

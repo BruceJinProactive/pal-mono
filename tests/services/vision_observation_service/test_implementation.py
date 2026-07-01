@@ -3,12 +3,14 @@
 import base64
 import uuid
 from collections.abc import Callable
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from PIL import Image
+from sqlalchemy.exc import SQLAlchemyError
 
 from services.vision_observation_service._implementation import (
     _build_entity_state_schema,
@@ -1700,6 +1702,180 @@ class TestGenerateObservation:
             "[Vision Observation] Failed to schedule inference trace"
             in warning_messages
         )
+
+    @pytest.mark.asyncio
+    async def test_config_values_are_snapshotted_before_trace_metadata_rollback(
+        self,
+    ) -> None:
+        session = AsyncMock()
+        config_id = uuid.uuid4()
+        project_id = uuid.uuid4()
+        entity_id = uuid.uuid4()
+        entity_type_id = uuid.uuid4()
+        state_id_open = uuid.uuid4()
+
+        class ExpiringConfig:
+            def __init__(self) -> None:
+                self.id = config_id
+                self.project_id = project_id
+                self.enabled = True
+                self.expired = False
+                self._llm_prompt = "Watch the door after rollback"
+                self._llm_provider = "azure"
+                self._llm_model = "gpt-4o"
+                self._reference_images: list[dict[str, str]] | None = None
+                self._structured_observations_enabled = True
+
+            def expire(self) -> None:
+                self.expired = True
+
+            def _ensure_live(self, field_name: str) -> None:
+                if self.expired:
+                    raise AssertionError(f"{field_name} read after rollback")
+
+            @property
+            def llm_prompt(self) -> str:
+                self._ensure_live("llm_prompt")
+                return self._llm_prompt
+
+            @property
+            def llm_provider(self) -> str:
+                self._ensure_live("llm_provider")
+                return self._llm_provider
+
+            @property
+            def llm_model(self) -> str:
+                self._ensure_live("llm_model")
+                return self._llm_model
+
+            @property
+            def reference_images(self) -> list[dict[str, str]] | None:
+                self._ensure_live("reference_images")
+                return self._reference_images
+
+            @property
+            def structured_observations_enabled(self) -> bool:
+                self._ensure_live("structured_observations_enabled")
+                return self._structured_observations_enabled
+
+        class FailingProjectRepository:
+            def __init__(self, session_arg: object) -> None:
+                self.session = session_arg
+
+            async def get_project(self, project_id_arg: uuid.UUID) -> object:
+                assert project_id_arg == project_id
+                raise SQLAlchemyError("project trace metadata failed")
+
+        config = ExpiringConfig()
+
+        async def expire_config_on_rollback() -> None:
+            config.expire()
+
+        session.rollback = AsyncMock(side_effect=expire_config_on_rollback)
+
+        mock_mapping = MagicMock()
+        mock_mapping.entity_id = entity_id
+        mock_mapping.roi_hint = None
+
+        mock_entity = MagicMock()
+        mock_entity.id = entity_id
+        mock_entity.name = "door_1"
+        mock_entity.is_active = True
+        mock_entity.entity_type_id = entity_type_id
+        mock_entity.current_state_id = None
+
+        mock_state_def = MagicMock()
+        mock_state_def.id = state_id_open
+        mock_state_def.name = "open"
+        mock_state_def.definition_type = "position"
+
+        mock_entity_type = MagicMock()
+        mock_entity_type.name = "door"
+        mock_entity_type.display_name = "Door"
+
+        mock_llm_provider = MagicMock()
+        mock_llm_provider.analyze_image.return_value = {
+            "result": {
+                "door_1": {
+                    "position": {
+                        "reason": "Door panel is visibly ajar.",
+                        "observations": {"confidence": "high"},
+                        "state": "open",
+                    }
+                },
+                "image_relevant": True,
+            },
+            "token_usage": {},
+        }
+
+        with (
+            patch(
+                "services.vision_observation_service._implementation.ProjectRepositoryAsync",
+                FailingProjectRepository,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraConfigurationRepository"
+            ) as mock_config_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionCameraEntityRepository"
+            ) as mock_mapping_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityRepository"
+            ) as mock_entity_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityStateDefinitionRepository"
+            ) as mock_sd_repo_cls,
+            patch(
+                "services.vision_observation_service._implementation.VisionEntityTypeRepository"
+            ) as mock_type_repo_cls,
+            patch("services.vision_observation_service._implementation.init_s3"),
+            patch(
+                "services.vision_observation_service._implementation.create_monitoring_llm_provider",
+                return_value=mock_llm_provider,
+            ),
+            patch(
+                "services.vision_observation_service._implementation.langfuse_vision_observation_span",
+                return_value=nullcontext(None),
+            ),
+            patch(
+                "services.vision_observation_service._implementation.schedule_vision_inference_trace",
+            ) as mock_trace,
+            patch(
+                "services.vision_observation_service._implementation.asyncio.to_thread",
+                side_effect=_sync_to_thread,
+            ),
+        ):
+            mock_config_repo_cls.return_value.get_by_signal_source = AsyncMock(
+                return_value=config
+            )
+            mock_mapping_repo_cls.return_value.list_by_camera = AsyncMock(
+                return_value=[mock_mapping]
+            )
+            mock_entity_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity
+            )
+            mock_sd_repo_cls.return_value.list_by_entity_type = AsyncMock(
+                return_value=[mock_state_def]
+            )
+            mock_type_repo_cls.return_value.get_by_id = AsyncMock(
+                return_value=mock_entity_type
+            )
+
+            result = await generate_observation(
+                session,
+                config_id,
+                image_bytes=_test_image_bytes(),
+                is_test=True,
+                observed_at=datetime(2026, 6, 25, 1, 2, 3, tzinfo=timezone.utc),
+            )
+
+        assert result is not None
+        analyze_args = mock_llm_provider.analyze_image.call_args.args
+        assert analyze_args[1] == "Watch the door after rollback"
+        assert analyze_args[4] == {"type": "json_object"}
+        mock_trace.assert_called_once()
+        assert mock_trace.call_args.kwargs["reference_image_metadata"] == []
+        assert session.rollback.await_count == 2
 
     @pytest.mark.asyncio
     async def test_observation_skips_when_current_metadata_matches(self):
