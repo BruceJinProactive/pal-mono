@@ -32,6 +32,12 @@ from db.repositories.resource_role_assignment_repository import ResourceType
 from db.tables.types import AccountUserStatus, InvitationStatus
 from services import email_service
 from services.admin_service._utils import generate_password
+from services.auth_service.config import (
+    ACCOUNT_ADMIN_ROLE,
+    ACCOUNT_ADMIN_ROLE_ALIASES,
+    STORE_MEMBER_ROLE,
+    STORE_OWNER_ROLE,
+)
 from services.auth_types import UserContext, UserRole
 from services.team_service.invitation_token import generate_invitation_jwt
 from services.team_service.schema import (
@@ -52,6 +58,38 @@ AWS_ADMIN_CONSOLE_USER_POOL_ID = os.environ["AWS_ADMIN_CONSOLE_USER_POOL_ID"]
 TEAM_INVITATION_NEW_USER_TEMPLATE_ID = 42139611  # For new users (with password)
 TEAM_INVITATION_EXISTING_USER_TEMPLATE_ID = 42173053  # For existing confirmed users
 TEAM_INVITATION_PENDING_USER_TEMPLATE_ID = 42173054  # For users who never logged in
+ASSIGNABLE_CUSTOMER_ROLES = frozenset(
+    {ACCOUNT_ADMIN_ROLE, STORE_OWNER_ROLE, STORE_MEMBER_ROLE}
+)
+STORE_SCOPED_CUSTOMER_ROLES = frozenset({STORE_OWNER_ROLE, STORE_MEMBER_ROLE})
+
+
+def _validate_assignable_customer_role(role: str) -> None:
+    """Reject legacy role keys for new customer-console role writes."""
+    if role not in ASSIGNABLE_CUSTOMER_ROLES:
+        raise ValueError(f"Unsupported customer role: {role}")
+
+
+def _validate_invitation_role_scope(role: str, project_ids: list[UUID] | None) -> None:
+    """Validate account-level versus store-scoped invitation shape."""
+    _validate_assignable_customer_role(role)
+
+    if role == ACCOUNT_ADMIN_ROLE:
+        if project_ids is not None:
+            raise ValueError("account_admin invitations must omit project_ids")
+        return
+
+    if role in STORE_SCOPED_CUSTOMER_ROLES and not project_ids:
+        raise ValueError(f"{role} invitations require project_ids")
+
+
+def _validate_update_role_scope(role: str) -> None:
+    """Reject store-scoped updates until project scope is part of the contract."""
+    _validate_assignable_customer_role(role)
+
+    if role in STORE_SCOPED_CUSTOMER_ROLES:
+        raise ValueError(f"{role} updates require explicit project scope")
+
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -167,6 +205,8 @@ def create_invitation(
         ValueError: If account not found, user is already a member, duplicate invitation exists,
                     or project_ids are invalid
     """
+    _validate_invitation_role_scope(params.account_role, params.project_ids)
+
     # 1. Get account
     account_repo = AccountRepository(session)
     account = account_repo.get_account(account_name)
@@ -585,6 +625,8 @@ def update_member_role(
     Raises:
         ValueError: If account/user not found, last owner protection triggered, or role update fails
     """
+    _validate_update_role_scope(params.account_role)
+
     # 1. Get account
     account_repo = AccountRepository(session)
     account = account_repo.get_account(account_name)
@@ -620,9 +662,12 @@ def update_member_role(
         return target_user_id, updated_at
 
     # 5. Check last owner protection
-    if current_role == "owner" and params.account_role != "owner":
+    if (
+        current_role in ACCOUNT_ADMIN_ROLE_ALIASES
+        and params.account_role not in ACCOUNT_ADMIN_ROLE_ALIASES
+    ):
         owner_count = role_repo.count_owners_for_resource(
-            ResourceType.ACCOUNT, account.id
+            ResourceType.ACCOUNT, account.id, ACCOUNT_ADMIN_ROLE_ALIASES
         )
         if owner_count <= 1:
             raise ValueError("Cannot remove the last owner from the account")
@@ -726,7 +771,7 @@ def remove_team_member(
         return
 
     # 3. Find confirmed user by email
-    account_user_repo = AccountUserRepository(session)
+    account_user_repo = AccountUserRepository(session, auto_commit=False)
     account_users = account_user_repo.get_users_for_account(account.id)
 
     target_user_id = None
@@ -739,14 +784,14 @@ def remove_team_member(
         raise ValueError("User not found in account")
 
     # 4. Check last owner protection
-    role_repo = ResourceRoleAssignmentRepository(session)
+    role_repo = ResourceRoleAssignmentRepository(session, auto_commit=False)
     current_roles = role_repo.get_roles_for_resource(
         target_user_id, ResourceType.ACCOUNT, account.id
     )
 
-    if "owner" in current_roles:
+    if ACCOUNT_ADMIN_ROLE_ALIASES.intersection(current_roles):
         owner_count = role_repo.count_owners_for_resource(
-            ResourceType.ACCOUNT, account.id
+            ResourceType.ACCOUNT, account.id, ACCOUNT_ADMIN_ROLE_ALIASES
         )
         if owner_count <= 1:
             raise ValueError("Cannot remove the last owner from the account")
@@ -758,14 +803,32 @@ def remove_team_member(
         f"by actor {context.email} (actor_user_id={context.username}, "
         f"actor_role={context.role.value})"
     )
-    account_user_repo.update_status(
-        target_user_id, account.id, AccountUserStatus.deactivated
-    )
+    try:
+        account_user_repo.update_status(
+            target_user_id, account.id, AccountUserStatus.deactivated
+        )
 
-    # 6. Remove all role assignments
-    role_repo.remove_all_roles_for_user_on_resource(
-        target_user_id, ResourceType.ACCOUNT, account.id
-    )
+        # 6. Remove all account- and project-level role assignments for this account
+        role_repo.remove_all_roles_for_user_on_resource(
+            target_user_id,
+            ResourceType.ACCOUNT,
+            account.id,
+            raise_on_error=True,
+        )
+
+        project_repo = ProjectRepository(session, auto_commit=False)
+        for project in project_repo.get_projects_by_account_id(account.id):
+            role_repo.remove_all_roles_for_user_on_resource(
+                target_user_id,
+                ResourceType.PROJECT,
+                project.id,
+                raise_on_error=True,
+            )
+
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
 
     # 7. Send notification email (TODO)
 

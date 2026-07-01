@@ -406,10 +406,10 @@ class TestStoreOwnerVsOtherRoles:
         )
         assert result_project_2 is True
 
-    def test_store_owner_has_more_permissions_than_staff(
+    def test_store_owner_can_write_project_but_not_agents(
         self, db_session: Session
     ) -> None:
-        """Store Owner should have more permissions than Staff role."""
+        """Store Owner can write project settings but cannot edit agents."""
         world = make_world(db_session)
 
         store_owner = make_user(db_session, account_id=world.account.id)
@@ -462,7 +462,7 @@ class TestStoreOwnerVsOtherRoles:
             is False
         )
 
-        # Store Owner can create agents
+        # Store Owner cannot create agents
         assert (
             check_permission(
                 user_id=store_owner.id,
@@ -471,7 +471,7 @@ class TestStoreOwnerVsOtherRoles:
                 session=db_session,
                 check_hierarchy=False,
             )
-            is True
+            is False
         )
 
         # Staff cannot create agents

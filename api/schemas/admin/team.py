@@ -12,18 +12,34 @@ from enum import Enum
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, model_validator
 
 
 # Enums
 class UserRole(str, Enum):
-    """User roles for account and project-level permissions."""
+    """Readable user roles, including temporary migration aliases."""
 
+    ACCOUNT_ADMIN = "account_admin"
+    STORE_OWNER = "store_owner"
+    STORE_MEMBER = "store_member"
     OWNER = "owner"
     MANAGER = "manager"
     VIEWER = "viewer"
-    STORE_OWNER = "store_owner"
     STAFF = "staff"
+
+
+class AssignableUserRole(str, Enum):
+    """Customer roles that can be created by new Team mutations."""
+
+    ACCOUNT_ADMIN = "account_admin"
+    STORE_OWNER = "store_owner"
+    STORE_MEMBER = "store_member"
+
+
+class AccountAssignableUserRole(str, Enum):
+    """Account-level customer roles accepted by account-scoped update paths."""
+
+    ACCOUNT_ADMIN = "account_admin"
 
 
 class InvitationStatus(str, Enum):
@@ -39,13 +55,28 @@ class InvitationStatus(str, Enum):
 class InviteTeamMemberRequest(BaseModel):
     """Request to invite a new team member.
 
-    For account-level access (owner, manager, viewer): omit project_ids
-    For project-level access (staff, manager): provide project_ids list
+    For account-level access (account_admin): omit project_ids.
+    For project-level access (store_owner, store_member): provide project_ids.
     """
 
     email: EmailStr
-    account_role: UserRole
+    account_role: AssignableUserRole
     project_ids: List[UUID] | None = None
+
+    @model_validator(mode="after")
+    def validate_role_scope(self) -> "InviteTeamMemberRequest":
+        """Require project IDs for store-scoped roles."""
+        if self.account_role == AssignableUserRole.ACCOUNT_ADMIN:
+            if self.project_ids is not None:
+                raise ValueError("account_admin invitations must omit project_ids")
+            return self
+
+        if not self.project_ids:
+            raise ValueError(
+                "store_owner and store_member invitations require project_ids"
+            )
+
+        return self
 
 
 class InvitationResponse(BaseModel):
@@ -97,9 +128,13 @@ class TeamMembersListResponse(BaseModel):
 
 
 class UpdateTeamMemberRequest(BaseModel):
-    """Request to update a team member's role."""
+    """Request to update an account-scoped team member role.
 
-    account_role: UserRole
+    Store-scoped role updates require explicit project scope and are handled in a
+    later Team management slice.
+    """
+
+    account_role: AccountAssignableUserRole
 
 
 class UpdateTeamMemberResponse(BaseModel):
@@ -260,10 +295,8 @@ class SwitchAccountResponse(BaseModel):
 class ProjectRole(str, Enum):
     """User roles for project-level permissions."""
 
-    STAFF = "staff"
     STORE_OWNER = "store_owner"
-    MANAGER = "manager"
-    VIEWER = "viewer"
+    STORE_MEMBER = "store_member"
 
 
 class AssignProjectRoleRequest(BaseModel):

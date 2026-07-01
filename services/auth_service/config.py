@@ -8,73 +8,110 @@ migrate to database tables for dynamic management.
 
 from typing import Dict, Optional, Set
 
+ACCOUNT_ADMIN_ROLE = "account_admin"
+STORE_OWNER_ROLE = "store_owner"
+STORE_MEMBER_ROLE = "store_member"
+
+LEGACY_OWNER_ROLE = "owner"
+LEGACY_MANAGER_ROLE = "manager"
+LEGACY_VIEWER_ROLE = "viewer"
+LEGACY_STAFF_ROLE = "staff"
+
+ACCOUNT_ADMIN_ROLE_ALIASES = frozenset({ACCOUNT_ADMIN_ROLE, LEGACY_OWNER_ROLE})
+
 # =============================================================================
 # ROLE PERMISSIONS
 # =============================================================================
 
+ACCOUNT_ADMIN_PERMISSIONS: Set[str] = {
+    "account.read",
+    "account.status.read",
+    "account.write",
+    "account.billing.read",
+    "account.billing.write",
+    "account.team_manage",
+    "project.create",
+    "project.read",
+    "project.write",
+    "project.delete",
+    "brand.read",
+    "brand.write",
+    "team.read",
+    "team.manage",
+    "conversation.read",
+    "history.read",
+    "feedback.read",
+    "feedback.write",
+    "agent.read",
+    "billing.read",
+    "billing.write",
+    "docs.read",
+    "catering.read",
+    "catering.write",
+    "operation.read",
+    # Temporary compatibility for Operations routes that still check routine /
+    # execution / submission permissions instead of operation.read.
+    "routine.read",
+    "routine.write",
+    "execution.read.today",
+    "execution.read.history",
+    "submission.create",
+    "submission.write",
+    "submission.review",
+    "plan.approve",
+    "data.export",
+}
+
+STORE_OWNER_PERMISSIONS: Set[str] = {
+    "account.read",
+    "account.status.read",
+    "project.read",
+    "project.write",
+    "team.manage",
+    "conversation.read",
+    "agent.read",
+    "docs.read",
+    "catering.read",
+    "catering.write",
+    "operation.read",
+    # Temporary compatibility for Operations routes that still check routine /
+    # execution / submission permissions instead of operation.read.
+    "routine.read",
+    "execution.read.today",
+    "execution.read.history",
+    "submission.create",
+    "submission.write",
+}
+
+STORE_MEMBER_PERMISSIONS: Set[str] = {
+    "account.read",
+    "account.status.read",
+    "project.read",
+    "conversation.read",
+    "agent.read",
+    "docs.read",
+    "catering.read",
+    "operation.read",
+    # Temporary compatibility for Operations routes that still check routine /
+    # execution / submission permissions instead of operation.read.
+    "routine.read",
+    "execution.read.today",
+    "execution.read.history",
+    "submission.create",
+    "submission.write",
+}
+
 ROLE_PERMISSIONS: Dict[str, Set[str]] = {
-    # Owner: Full access (wildcard)
-    "owner": {"*"},
-    # Manager: Can manage projects/agents, approve plans, export data
-    # Cannot: modify billing, manage team
-    "manager": {
-        "account.read",
-        "project.create",
-        "project.read",
-        "project.write",
-        "project.delete",
-        "agent.create",
-        "agent.read",
-        "agent.write",
-        "agent.delete",
-        "plan.approve",
-        "data.export",
-        # Routine permissions
-        "routine.read",
-        "routine.write",
-        "execution.read.today",
-        "execution.read.history",
-        "submission.create",
-        "submission.write",
-        "submission.review",
-    },
-    # Viewer: Read-only access + data export
-    # Cannot: create/modify anything
-    "viewer": {
-        "account.read",
-        "project.read",
-        "agent.read",
-        "data.export",
-        # Routine read-only permissions
-        "routine.read",
-        "execution.read.today",
-        "execution.read.history",
-    },
-    # Staff: Project-level role for routine operations
-    # Can: view today's routines/executions, create and modify submissions
-    # Cannot: view history, review submissions
-    "staff": {
-        "project.read",  # Required for hierarchy check
-        "routine.read",  # View routine details
-        "execution.read.today",  # Today's executions only (no history)
-        "submission.create",  # Start submissions
-        "submission.write",  # Modify any submission (staff collaborate on routines)
-        "account.status.read",  # View basic account status (terms acceptance)
-    },
-    # Store Owner: Project-scoped management role
-    # Can: manage their assigned store(s), agents, view conversation history
-    # Cannot: manage team, modify billing, access other stores
-    "store_owner": {
-        "project.read",
-        "project.write",
-        "agent.create",
-        "agent.read",
-        "agent.write",
-        "agent.delete",
-        "history.read",
-        "account.read",
-        "account.status.read",
-    },
+    # Canonical customer roles
+    ACCOUNT_ADMIN_ROLE: set(ACCOUNT_ADMIN_PERMISSIONS),
+    STORE_OWNER_ROLE: set(STORE_OWNER_PERMISSIONS),
+    STORE_MEMBER_ROLE: set(STORE_MEMBER_PERMISSIONS),
+    # Temporary migration aliases. Do not create new assignments with these keys.
+    LEGACY_OWNER_ROLE: set(ACCOUNT_ADMIN_PERMISSIONS),
+    LEGACY_MANAGER_ROLE: set(STORE_MEMBER_PERMISSIONS),
+    LEGACY_VIEWER_ROLE: set(STORE_MEMBER_PERMISSIONS),
+    # Staff is intentionally fail-closed for customer-console RBAC.
+    LEGACY_STAFF_ROLE: set(),
 }
 
 # =============================================================================
@@ -107,6 +144,12 @@ RESOURCE_HIERARCHY: Dict[str, Optional[str]] = {
     "campaigns": "accounts",  # Campaign belongs to account
     "knowledges": "accounts",  # Knowledge belongs to account
     "subscriptions": "accounts",  # Subscription belongs to account
+    "conversations": "projects",  # Conversation belongs to a store/project
+    "catering_requests": "projects",  # Catering request belongs to a store/project
+    "operations": "projects",  # Operations views are store/project scoped
+    "brands": "accounts",  # Brand settings belong to the account
+    "teams": "accounts",  # Team management belongs to the account
+    "docs": "accounts",  # Customer docs are account scoped
     # Standalone resources (no hierarchy)
     "plans": None,  # Plans are top-level for now
     "data": None,  # Data resources are top-level for now
@@ -148,6 +191,83 @@ PERMISSION_REGISTRY: Dict[str, Dict[str, str]] = {
         "display_name": "Manage Team",
         "description": "Invite and remove team members",
         "resource_type": "accounts",
+    },
+    # Brand permissions
+    "brand.read": {
+        "display_name": "View Brand",
+        "description": "View brand settings",
+        "resource_type": "brands",
+    },
+    "brand.write": {
+        "display_name": "Modify Brand",
+        "description": "Modify brand settings",
+        "resource_type": "brands",
+    },
+    # Team permissions
+    "team.read": {
+        "display_name": "View Team",
+        "description": "View team members",
+        "resource_type": "teams",
+    },
+    "team.manage": {
+        "display_name": "Manage Team",
+        "description": "Invite and manage team members",
+        "resource_type": "teams",
+    },
+    # Conversation and feedback permissions
+    "conversation.read": {
+        "display_name": "View Conversations",
+        "description": "View conversations",
+        "resource_type": "conversations",
+    },
+    "history.read": {
+        "display_name": "View History",
+        "description": "View conversation history",
+        "resource_type": "histories",
+    },
+    "feedback.read": {
+        "display_name": "View Feedback",
+        "description": "View feedback",
+        "resource_type": "feedbacks",
+    },
+    "feedback.write": {
+        "display_name": "Modify Feedback",
+        "description": "Create and modify feedback",
+        "resource_type": "feedbacks",
+    },
+    # Billing permissions
+    "billing.read": {
+        "display_name": "View Billing",
+        "description": "View billing information",
+        "resource_type": "subscriptions",
+    },
+    "billing.write": {
+        "display_name": "Modify Billing",
+        "description": "Modify billing settings",
+        "resource_type": "subscriptions",
+    },
+    # Docs permissions
+    "docs.read": {
+        "display_name": "View Docs",
+        "description": "View customer documentation",
+        "resource_type": "docs",
+    },
+    # Catering permissions
+    "catering.read": {
+        "display_name": "View Catering Requests",
+        "description": "View catering requests",
+        "resource_type": "catering_requests",
+    },
+    "catering.write": {
+        "display_name": "Modify Catering Requests",
+        "description": "Modify catering requests",
+        "resource_type": "catering_requests",
+    },
+    # Operations permissions
+    "operation.read": {
+        "display_name": "View Operations",
+        "description": "View Operations and Vision data",
+        "resource_type": "operations",
     },
     # Project permissions
     "project.create": {

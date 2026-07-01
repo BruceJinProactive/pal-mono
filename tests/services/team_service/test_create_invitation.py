@@ -9,7 +9,7 @@ from pytest_mock import MockerFixture
 
 from services.auth_types import UserContext, UserRole
 from services.team_service import _implementation as svc
-from services.team_service.schema import InvitationParams
+from services.team_service.schema import InvitationParams, UpdateMemberRoleParams
 
 ACCOUNT_ID = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 INVITER_ID = UUID("11111111-2222-3333-4444-555555555555")
@@ -18,6 +18,7 @@ ACCOUNT_NAME = "acme_test"
 ACCOUNT_DISPLAY_NAME = "Acme Test"
 INVITEE_EMAIL = "invitee@example.com"
 INVITATION_TOKEN = "db-invitation-token"
+PROJECT_ID = UUID("22222222-3333-4444-5555-666666666666")
 
 
 @pytest.fixture
@@ -113,13 +114,90 @@ def _patch_external_dependencies(
 
 
 def _create_invitation(user_context: UserContext) -> object:
-    """Call the service with the standard account-level manager invite."""
+    """Call the service with the standard account-level Admin invite."""
     return svc.create_invitation(
         session=MagicMock(),
         context=user_context,
         account_name=ACCOUNT_NAME,
-        params=InvitationParams(email=INVITEE_EMAIL, account_role="manager"),
+        params=InvitationParams(email=INVITEE_EMAIL, account_role="account_admin"),
     )
+
+
+@pytest.mark.parametrize("legacy_role", ["owner", "manager", "viewer", "staff"])
+def test_create_invitation_rejects_legacy_customer_roles(
+    legacy_role: str,
+    user_context: UserContext,
+) -> None:
+    with pytest.raises(ValueError, match="Unsupported customer role"):
+        svc.create_invitation(
+            session=MagicMock(),
+            context=user_context,
+            account_name=ACCOUNT_NAME,
+            params=InvitationParams(email=INVITEE_EMAIL, account_role=legacy_role),
+        )
+
+
+@pytest.mark.parametrize("store_role", ["store_owner", "store_member"])
+def test_create_invitation_rejects_store_roles_without_project_ids(
+    store_role: str,
+    user_context: UserContext,
+) -> None:
+    with pytest.raises(ValueError, match="invitations require project_ids"):
+        svc.create_invitation(
+            session=MagicMock(),
+            context=user_context,
+            account_name=ACCOUNT_NAME,
+            params=InvitationParams(email=INVITEE_EMAIL, account_role=store_role),
+        )
+
+
+@pytest.mark.parametrize("store_role", ["store_owner", "store_member"])
+def test_create_invitation_rejects_store_roles_with_empty_project_ids(
+    store_role: str,
+    user_context: UserContext,
+) -> None:
+    with pytest.raises(ValueError, match="invitations require project_ids"):
+        svc.create_invitation(
+            session=MagicMock(),
+            context=user_context,
+            account_name=ACCOUNT_NAME,
+            params=InvitationParams(
+                email=INVITEE_EMAIL,
+                account_role=store_role,
+                project_ids=[],
+            ),
+        )
+
+
+def test_create_invitation_rejects_account_admin_project_ids(
+    user_context: UserContext,
+) -> None:
+    with pytest.raises(ValueError, match="account_admin invitations must omit"):
+        svc.create_invitation(
+            session=MagicMock(),
+            context=user_context,
+            account_name=ACCOUNT_NAME,
+            params=InvitationParams(
+                email=INVITEE_EMAIL,
+                account_role="account_admin",
+                project_ids=[PROJECT_ID],
+            ),
+        )
+
+
+@pytest.mark.parametrize("store_role", ["store_owner", "store_member"])
+def test_update_member_role_rejects_store_roles_without_project_scope(
+    store_role: str,
+    user_context: UserContext,
+) -> None:
+    with pytest.raises(ValueError, match="updates require explicit project scope"):
+        svc.update_member_role(
+            session=MagicMock(),
+            context=user_context,
+            account_name=ACCOUNT_NAME,
+            user_email=INVITEE_EMAIL,
+            params=UpdateMemberRoleParams(account_role=store_role),
+        )
 
 
 def test_create_invitation_new_cognito_user_embeds_temporary_password(

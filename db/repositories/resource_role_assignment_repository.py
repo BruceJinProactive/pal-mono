@@ -1,12 +1,15 @@
 import uuid
+from collections.abc import Collection
 from enum import Enum
 from typing import Optional
 from uuid import UUID
 
+from sqlalchemy import and_, func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from db.tables import ResourceRoleAssignment
+from db.tables import AccountUser, ResourceRoleAssignment
+from db.tables.types import AccountUserStatus
 from utils.log import logger
 
 
@@ -174,6 +177,17 @@ class ResourceRoleAssignmentRepository:
         """
         roles = self.get_roles_for_resource(user_id, resource_type, resource_id)
         return role in roles
+
+    def has_any_role(
+        self,
+        user_id: uuid.UUID,
+        resource_type: ResourceType,
+        resource_id: uuid.UUID,
+        roles: frozenset[str],
+    ) -> bool:
+        """Check if user has any role from a set on a resource."""
+        user_roles = self.get_roles_for_resource(user_id, resource_type, resource_id)
+        return any(role in roles for role in user_roles)
 
     def get_assignments_for_user(
         self, user_id: uuid.UUID, resource_type: Optional[ResourceType] = None
@@ -514,7 +528,12 @@ class ResourceRoleAssignmentRepository:
             return False
 
     def remove_all_roles_for_user_on_resource(
-        self, user_id: uuid.UUID, resource_type: ResourceType, resource_id: uuid.UUID
+        self,
+        user_id: uuid.UUID,
+        resource_type: ResourceType,
+        resource_id: uuid.UUID,
+        *,
+        raise_on_error: bool = False,
     ) -> int:
         """Remove all role assignments for a user on a specific resource.
 
@@ -552,6 +571,8 @@ class ResourceRoleAssignmentRepository:
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Error removing all roles for user on resource: {e}")
+            if raise_on_error:
+                raise
             return 0
 
     def remove_all_assignments_for_user(self, user_id: uuid.UUID) -> int:
@@ -624,29 +645,49 @@ class ResourceRoleAssignmentRepository:
             return 0
 
     def count_owners_for_resource(
-        self, resource_type: ResourceType, resource_id: uuid.UUID
+        self,
+        resource_type: ResourceType,
+        resource_id: uuid.UUID,
+        owner_role_aliases: Collection[str],
     ) -> int:
-        """Count users with owner role on a resource.
+        """Count distinct active users with account-admin ownership roles.
 
-        Safety check to prevent removing the last owner.
+        Safety check to prevent removing the last account admin. Ownership role
+        policy is supplied by the service layer.
 
         Args:
             resource_type: ResourceType enum
             resource_id: UUID of the resource
+            owner_role_aliases: Role names treated as account ownership roles
 
         Returns:
-            Count of owner assignments
+            Count of distinct active account-admin users
         """
+        if not owner_role_aliases:
+            return 0
+
         resource_type_str = self._normalize_resource_type(resource_type)
         try:
+            query = self.session.query(ResourceRoleAssignment).filter(
+                ResourceRoleAssignment.resource_type == resource_type_str,
+                ResourceRoleAssignment.resource_id == resource_id,
+                ResourceRoleAssignment.role.in_(owner_role_aliases),
+            )
+
+            if resource_type == ResourceType.ACCOUNT:
+                query = query.join(
+                    AccountUser,
+                    and_(
+                        AccountUser.user_id == ResourceRoleAssignment.user_id,
+                        AccountUser.account_id == resource_id,
+                    ),
+                ).filter(AccountUser.status == AccountUserStatus.active)
+
             return (
-                self.session.query(ResourceRoleAssignment)
-                .filter(
-                    ResourceRoleAssignment.resource_type == resource_type_str,
-                    ResourceRoleAssignment.resource_id == resource_id,
-                    ResourceRoleAssignment.role == "owner",
-                )
-                .count()
+                query.with_entities(
+                    func.count(func.distinct(ResourceRoleAssignment.user_id))
+                ).scalar()
+                or 0
             )
         except SQLAlchemyError as e:
             self.session.rollback()

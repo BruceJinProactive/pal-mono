@@ -50,6 +50,7 @@ from services.admin_service.schema import (
     UserSessionPreview,
 )
 from services.agent_service import AgentParams
+from services.auth_service.config import ACCOUNT_ADMIN_ROLE
 from services.auth_types import UserContext
 from services.knowledge_service import KnowledgeFile
 from services.message_service import (
@@ -1664,7 +1665,7 @@ def signup_self_onboarding_user(
     refresh_token = auth_response["AuthenticationResult"]["RefreshToken"]
     expires_in = auth_response["AuthenticationResult"]["ExpiresIn"]
 
-    # Create account_user record and assign owner role in database
+    # Create account_user record and assign account admin role in database
     try:
         # Get account_id from account_name
         account_repo = AccountRepository(session)
@@ -1698,11 +1699,13 @@ def signup_self_onboarding_user(
             user_id=uuid.UUID(user_sub),
             resource_type=ResourceType.ACCOUNT,
             resource_id=account.id,
-            role="owner",
+            role=ACCOUNT_ADMIN_ROLE,
             assigned_by=None,  # Self-assigned during onboarding
             reason="Self-onboarding account creator",
         )
-        logger.info(f"Assigned owner role to {user_email} for account {account_name}")
+        logger.info(
+            f"Assigned account_admin role to {user_email} for account {account_name}"
+        )
     except Exception as e:
         logger.error(
             f"Failed to persist self-onboarding user membership/role for {user_email}: {e}"

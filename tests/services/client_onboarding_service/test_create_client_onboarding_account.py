@@ -217,7 +217,7 @@ def test_create_client_onboarding_account_creates_account_owner_lifecycle_and_in
         user_id=AE_USER_ID,
         resource_type=ResourceType.ACCOUNT,
         resource_id=ACCOUNT_ID,
-        role="owner",
+        role="account_admin",
         assigned_by=AE_USER_ID,
         reason="AE account creation onboarding",
     )
@@ -409,7 +409,7 @@ def test_create_client_onboarding_account_rejects_invalid_authenticated_user_id(
     session.commit.assert_not_called()
 
 
-def test_create_signer_invitation_uses_owner_role(
+def test_create_signer_invitation_uses_account_admin_role(
     monkeypatch: Any,
     context: UserContext,
 ) -> None:
@@ -440,7 +440,7 @@ def test_create_signer_invitation_uses_owner_role(
     assert result is invitation
     invite_params = create_invitation.call_args.kwargs["params"]
     assert invite_params.email == "signer@example.com"
-    assert invite_params.account_role == "owner"
+    assert invite_params.account_role == "account_admin"
     assert invite_params.project_ids is None
 
 
@@ -2266,7 +2266,7 @@ def test_sync_client_onboarding_fde_owner_assignment_creates_membership_and_owne
     role_repo = mocker.patch.object(
         svc, "ResourceRoleAssignmentRepository"
     ).return_value
-    role_repo.has_role.return_value = False
+    role_repo.has_any_role.return_value = False
 
     result = svc.sync_client_onboarding_fde_owner_assignment(
         session,
@@ -2297,9 +2297,15 @@ def test_sync_client_onboarding_fde_owner_assignment_creates_membership_and_owne
         user_id=FDE_USER_ID,
         resource_type=ResourceType.ACCOUNT,
         resource_id=ACCOUNT_ID,
-        role="owner",
+        role="account_admin",
         assigned_by=AE_USER_ID,
         reason="Client onboarding post-signature FDE ownership",
+    )
+    role_repo.has_any_role.assert_called_once_with(
+        FDE_USER_ID,
+        ResourceType.ACCOUNT,
+        ACCOUNT_ID,
+        svc.ACCOUNT_ADMIN_ROLE_ALIASES,
     )
     onboarding_repo.mark_sync_job_completed.assert_called_once()
     result_payload = onboarding_repo.mark_sync_job_completed.call_args.kwargs[
@@ -2332,7 +2338,7 @@ def test_sync_client_onboarding_fde_owner_assignment_reactivates_existing_member
     role_repo = mocker.patch.object(
         svc, "ResourceRoleAssignmentRepository"
     ).return_value
-    role_repo.has_role.return_value = True
+    role_repo.has_any_role.return_value = True
 
     result = svc.sync_client_onboarding_fde_owner_assignment(
         session,
@@ -2350,6 +2356,12 @@ def test_sync_client_onboarding_fde_owner_assignment_reactivates_existing_member
     )
     account_user_repo.create.assert_not_called()
     role_repo.add_role.assert_not_called()
+    role_repo.has_any_role.assert_called_once_with(
+        FDE_USER_ID,
+        ResourceType.ACCOUNT,
+        ACCOUNT_ID,
+        svc.ACCOUNT_ADMIN_ROLE_ALIASES,
+    )
     session.commit.assert_called_once()
 
 
@@ -2450,7 +2462,7 @@ def test_sync_client_onboarding_fde_owner_assignment_records_failure(
     role_repo = mocker.patch.object(
         svc, "ResourceRoleAssignmentRepository"
     ).return_value
-    role_repo.has_role.return_value = False
+    role_repo.has_any_role.return_value = False
 
     with pytest.raises(RuntimeError, match="Identity lookup failed"):
         svc.sync_client_onboarding_fde_owner_assignment(

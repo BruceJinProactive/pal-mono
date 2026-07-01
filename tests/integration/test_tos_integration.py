@@ -602,4 +602,4 @@ class TestAcceptTermsEndpointIntegration:
                         )
 
                     assert exc_info.value.status_code == 403
-                    assert "Only account Owners" in exc_info.value.detail
+                    assert "Only account Admins" in exc_info.value.detail

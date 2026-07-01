@@ -35,6 +35,7 @@ from db.tables.accounts import AccountStatus, OnboardingMethod
 from db.tables.types import AccountUserStatus, InvitationStatus
 from services import account_service
 from services.account_service import AccountParams
+from services.auth_service.config import ACCOUNT_ADMIN_ROLE, ACCOUNT_ADMIN_ROLE_ALIASES
 from services.auth_types import UserContext
 from services.folk_notion_sync._mapping import (
     CompanyProjection,
@@ -1372,7 +1373,7 @@ def _attach_ae_as_owner(
         user_id=ae_user_id,
         resource_type=ResourceType.ACCOUNT,
         resource_id=account.id,
-        role="owner",
+        role=ACCOUNT_ADMIN_ROLE,
         assigned_by=ae_user_id,
         reason="AE account creation onboarding",
     )
@@ -1394,7 +1395,7 @@ def _create_signer_invitation(
         account_name=account_name,
         params=InvitationParams(
             email=signer_email,
-            account_role="owner",
+            account_role=ACCOUNT_ADMIN_ROLE,
             project_ids=None,
         ),
     )
@@ -1689,18 +1690,18 @@ def _add_fde_owner_to_manage_app_account(
         )
         membership_created = True
 
-    owner_role_assigned = not role_repo.has_role(
+    owner_role_assigned = not role_repo.has_any_role(
         lifecycle.fde_owner_user_id,
         ResourceType.ACCOUNT,
         lifecycle.account_id,
-        "owner",
+        ACCOUNT_ADMIN_ROLE_ALIASES,
     )
     if owner_role_assigned:
         role_repo.add_role(
             user_id=lifecycle.fde_owner_user_id,
             resource_type=ResourceType.ACCOUNT,
             resource_id=lifecycle.account_id,
-            role="owner",
+            role=ACCOUNT_ADMIN_ROLE,
             assigned_by=lifecycle.ae_owner_user_id,
             reason="Client onboarding post-signature FDE ownership",
         )

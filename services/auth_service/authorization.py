@@ -104,7 +104,8 @@ def get_user_role_on_account(
         session: Database session
 
     Returns:
-        Role string (e.g., 'owner', 'manager', 'viewer') or None if no role
+        Role string (e.g., 'account_admin', 'store_owner', 'store_member') or
+        None if no role
     """
     try:
         # First verify user is a member of the account
@@ -137,15 +138,11 @@ def get_role_permissions(role: str) -> Set[str]:
     Get permissions for a role (v1: from config).
 
     Args:
-        role: Role string (e.g., 'owner', 'manager', 'viewer')
+        role: Role string (e.g., 'account_admin', 'store_owner', 'store_member')
 
     Returns:
         Set of permission names (e.g., {'project.create', 'agent.read'})
     """
-    # Special case: Owner has all permissions
-    if role == "owner":
-        return {"*"}
-
     return ROLE_PERMISSIONS.get(role, set())
 
 

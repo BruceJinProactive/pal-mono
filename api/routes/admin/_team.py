@@ -262,7 +262,7 @@ async def update_team_member_role(
     # 3. Return API response
     return UpdateTeamMemberResponse(
         user_id=user_id,
-        account_role=request.account_role,
+        account_role=UserRole(request.account_role.value),
         updated_at=updated_at,
     )
 

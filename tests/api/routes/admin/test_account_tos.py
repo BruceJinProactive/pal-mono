@@ -219,7 +219,7 @@ class TestAcceptAccountTerms:
                 )
 
             assert exc_info.value.status_code == 403
-            assert "Only account Owners" in exc_info.value.detail
+            assert "Only account Admins" in exc_info.value.detail
 
     @pytest.mark.asyncio
     async def test_accept_terms_already_accepted_idempotent(

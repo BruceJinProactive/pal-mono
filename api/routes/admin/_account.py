@@ -36,6 +36,7 @@ from services import (
 from services.account_service import AccountParams
 from services.admin_service.schema import CognitoUserSession
 from services.auth_service.authorization import get_user_role_on_account
+from services.auth_service.config import ACCOUNT_ADMIN_ROLE_ALIASES
 from utils.log import logger
 from utils.otel import increment_counter, record_duration
 
@@ -303,14 +304,14 @@ async def accept_account_terms(
                 headers={"Content-Type": "application/json"},
             ) from e
 
-        # Only allow account Owner role to accept (not Manager/Viewer)
+        # Only allow account Admin role to accept (including legacy Owner alias).
         role = get_user_role_on_account(
             user_id=user_id, account_id=account.id, session=session
         )
-        if role != "owner":
+        if role not in ACCOUNT_ADMIN_ROLE_ALIASES:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only account Owners can accept Terms of Service.",
+                detail="Only account Admins can accept Terms of Service.",
                 headers={"Content-Type": "application/json"},
             )
 
