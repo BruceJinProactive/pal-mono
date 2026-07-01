@@ -10,6 +10,7 @@ Architecture:
 - require_*_permission: Pre-configured factories for specific resource types
 """
 
+from collections.abc import Collection
 from functools import partial
 from typing import Any, Callable, Coroutine
 from uuid import UUID
@@ -22,6 +23,12 @@ import db
 from db.repositories.account_user_repository import AccountUserRepository
 from services.auth_service.authorization import check_permission
 from services.auth_service.resolution import resolve_resource_identifier
+from services.auth_service.scope import (
+    ProjectScopeForbiddenError,
+    authorize_requested_project_ids,
+    get_accessible_project_ids,
+    get_account_project_ids,
+)
 from services.auth_types import UserContext, UserRole
 from utils.log import logger
 
@@ -94,6 +101,51 @@ def _extract_user_id(current_user: UserContext) -> UUID:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid user credentials",
+            headers={"Content-Type": "application/json"},
+        ) from err
+
+
+def resolve_project_scope_or_raise(
+    session: Session,
+    current_user: UserContext,
+    account_id: UUID,
+    permission: str,
+    requested_project_ids: Collection[UUID] | None = None,
+) -> list[UUID]:
+    """Resolve project scope for account routes and raise HTTP 403 on denial."""
+    if current_user.role == UserRole.Admin:
+        accessible_project_ids = get_account_project_ids(session, account_id)
+    else:
+        user_id = _extract_user_id(current_user)
+        accessible_project_ids = get_accessible_project_ids(
+            session=session,
+            user_id=user_id,
+            account_id=account_id,
+            permission=permission,
+            user_role=current_user.role.value if current_user.role else None,
+        )
+
+    try:
+        return authorize_requested_project_ids(
+            requested_project_ids=requested_project_ids,
+            accessible_project_ids=accessible_project_ids,
+        )
+    except ProjectScopeForbiddenError as err:
+        logger.warning(
+            "Project scope denied",
+            extra={
+                "account_id": str(account_id),
+                "permission": permission,
+                "user_email": current_user.email,
+                "user_id": current_user.username,
+                "requested_project_ids_count": len(requested_project_ids or []),
+                "denied_project_ids_count": len(err.denied_project_ids),
+                "accessible_project_ids_count": len(err.accessible_project_ids),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Requested project_ids are outside your scope for {permission}",
             headers={"Content-Type": "application/json"},
         ) from err
 

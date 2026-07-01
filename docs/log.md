@@ -4,6 +4,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ---
 
+## 2026-07-01
+
+- **Customer RBAC store-scope helpers.** Added shared authorization helpers that compute accessible account project IDs from account-admin aliases or project-scoped roles, validate requested project filters, and provide a FastAPI wrapper that turns explicit out-of-scope store requests into 403 responses.
+
 ## 2026-06-30
 
 - **Admin ordering revenue AOV semantics.** Updated `palona_aov` in ordering

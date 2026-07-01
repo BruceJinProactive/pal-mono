@@ -36,11 +36,19 @@ from services.auth_service.dependencies import (
     require_routine_permission,
     require_submission_permission,
     require_subscription_permission,
+    resolve_project_scope_or_raise,
 )
 from services.auth_service.resolution import (
     get_parent_resource,
     resolve_account_identifier,
     resolve_resource_identifier,
+)
+from services.auth_service.scope import (
+    ProjectScopeForbiddenError,
+    authorize_requested_project_ids,
+    get_accessible_project_ids,
+    get_account_project_ids,
+    resolve_project_scope,
 )
 
 __all__ = [
@@ -54,8 +62,15 @@ __all__ = [
     "resolve_account_identifier",
     "resolve_resource_identifier",
     "get_parent_resource",
+    # Store scope helpers
+    "ProjectScopeForbiddenError",
+    "get_account_project_ids",
+    "get_accessible_project_ids",
+    "authorize_requested_project_ids",
+    "resolve_project_scope",
     # FastAPI dependencies
     "PermissionChecker",
+    "resolve_project_scope_or_raise",
     "require_permission",
     # FastAPI dependency factories (recommended for most use cases)
     "require_account_membership",
