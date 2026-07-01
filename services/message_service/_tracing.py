@@ -4,12 +4,29 @@ Provides a context manager that creates a root Langfuse observation with
 proper trace attributes (session_id, user_id, tags, metadata).
 """
 
+import os
 import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
-from langfuse import get_client, propagate_attributes
+from langfuse import Langfuse, get_client, propagate_attributes
+from langfuse._client.get_client import _set_current_public_key
+
+_voice_langfuse_client: Langfuse | None = None
+
+
+def _get_voice_langfuse_client() -> tuple[Any, str | None]:
+    global _voice_langfuse_client
+
+    public_key = os.getenv("LANGFUSE_PUBLIC_KEY") or None
+    if public_key is None:
+        return get_client(), None
+
+    if _voice_langfuse_client is None:
+        _voice_langfuse_client = Langfuse(public_key=public_key)
+
+    return _voice_langfuse_client, public_key
 
 
 @contextmanager
@@ -31,8 +48,9 @@ def langfuse_message_span(
             result = await run_agent(...)
             lf.set_current_trace_io(output={"content": result.content})
     """
-    lf = get_client()
+    lf, public_key = _get_voice_langfuse_client()
     with (
+        _set_current_public_key(public_key),
         lf.start_as_current_observation(
             name="Message Service Processing",
             as_type="span",
