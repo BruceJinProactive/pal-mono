@@ -155,7 +155,7 @@ Revenue semantics:
 - `palona_revenue` counts paid Palona-created order value.
 - Payment-link revenue is inferred from paid orders with `tracking_link`.
 - Pay-in-store revenue is inferred from paid orders without `tracking_link`.
-- `palona_aov` divides created order value by created order count.
+- `palona_aov` divides Palona-attributed revenue by Palona-attributed order count.
 - Fulfillment groups `takeout`, `take_out`, `pickup`, and `pick_up` as takeout;
   `delivery` is reported separately.
 

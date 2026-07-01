@@ -116,7 +116,7 @@ async def test_ordering_revenue_metrics_maps_summary_series_and_stores(
         {
             "date": datetime(2026, 5, 1, tzinfo=UTC).date(),
             "total_orders": 4,
-            "total_order_value": Decimal("100.00"),
+            "total_order_value": Decimal("120.00"),
             "palona_revenue": Decimal("75.00"),
             "payment_link_orders": 2,
             "payment_link_revenue": Decimal("50.00"),
@@ -134,7 +134,7 @@ async def test_ordering_revenue_metrics_maps_summary_series_and_stores(
             "project_id": project_id,
             "project_name": "Downtown",
             "total_orders": 4,
-            "total_order_value": Decimal("100.00"),
+            "total_order_value": Decimal("120.00"),
             "palona_revenue": Decimal("75.00"),
             "payment_link_orders": 2,
             "payment_link_revenue": Decimal("50.00"),
@@ -183,6 +183,7 @@ async def test_ordering_revenue_metrics_maps_summary_series_and_stores(
         "2026-05-01",
         "2026-05-02",
     ]
+    assert result.time_series[0].palona_aov == 25.0
     assert result.time_series[0].payment_link_revenue == 50.0
     assert result.time_series[1].total_orders == 0
     assert result.stores[0].store_id == "store-1"

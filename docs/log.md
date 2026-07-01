@@ -6,6 +6,10 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-30
 
+- **Admin ordering revenue AOV semantics.** Updated `palona_aov` in ordering
+  revenue metrics to divide Palona-attributed revenue by Palona-attributed order
+  count, keeping AOV aligned with the revenue value displayed in Admin Console.
+  -> `docs/state/architecture.md`
 - **Vision camera check schedule schema.** Added storage-only
   `vision_camera_configuration` fields for `check_mode`, daily check start/end
   times, minute-based check frequency, and weekly observation days, with `daily`

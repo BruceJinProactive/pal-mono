@@ -345,6 +345,10 @@ def _to_revenue_aov(total_value: float, total_orders: int) -> float:
     return round(total_value / total_orders, 2) if total_orders > 0 else 0.0
 
 
+def _to_palona_revenue_order_count(values: dict[str, int | float]) -> int:
+    return int(values["payment_link_orders"]) + int(values["pay_in_store_orders"])
+
+
 def _revenue_metric_values(row: dict[str, object]) -> dict[str, int | float]:
     return {
         "total_orders": _to_int(row["total_orders"]),
@@ -784,7 +788,7 @@ async def get_ordering_revenue_metrics(
             summary_values[key] += value
 
     total_orders = int(summary_values["total_orders"])
-    total_order_value = float(summary_values["total_order_value"])
+    palona_revenue_order_count = _to_palona_revenue_order_count(summary_values)
 
     time_series = []
     for date_key in _iter_date_keys(start_date, end_date):
@@ -807,13 +811,16 @@ async def get_ordering_revenue_metrics(
             continue
 
         day_orders = int(values["total_orders"])
-        day_value = float(values["total_order_value"])
+        day_palona_revenue = float(values["palona_revenue"])
+        day_palona_revenue_order_count = _to_palona_revenue_order_count(values)
         time_series.append(
             OrderingRevenueTimeSeriesPoint(
                 date=date_key,
                 total_orders=day_orders,
-                palona_revenue=round(float(values["palona_revenue"]), 2),
-                palona_aov=_to_revenue_aov(day_value, day_orders),
+                palona_revenue=round(day_palona_revenue, 2),
+                palona_aov=_to_revenue_aov(
+                    day_palona_revenue, day_palona_revenue_order_count
+                ),
                 payment_link_orders=int(values["payment_link_orders"]),
                 payment_link_revenue=round(float(values["payment_link_revenue"]), 2),
                 pay_in_store_orders=int(values["pay_in_store_orders"]),
@@ -838,7 +845,8 @@ async def get_ordering_revenue_metrics(
         )
         values = _revenue_metric_values(row)
         store_orders = int(values["total_orders"])
-        store_value = float(values["total_order_value"])
+        store_palona_revenue = float(values["palona_revenue"])
+        store_palona_revenue_order_count = _to_palona_revenue_order_count(values)
         stores.append(
             OrderingRevenueStore(
                 store_id=store_id,
@@ -846,8 +854,10 @@ async def get_ordering_revenue_metrics(
                 project_id=project_id,
                 project_name=project_name,
                 orders=store_orders,
-                palona_revenue=round(float(values["palona_revenue"]), 2),
-                palona_aov=_to_revenue_aov(store_value, store_orders),
+                palona_revenue=round(store_palona_revenue, 2),
+                palona_aov=_to_revenue_aov(
+                    store_palona_revenue, store_palona_revenue_order_count
+                ),
                 payment_link=OrderingRevenueAmountBucket(
                     orders=int(values["payment_link_orders"]),
                     revenue=round(float(values["payment_link_revenue"]), 2),
@@ -867,7 +877,9 @@ async def get_ordering_revenue_metrics(
         summary=OrderingRevenueSummary(
             total_orders=total_orders,
             palona_revenue=round(float(summary_values["palona_revenue"]), 2),
-            palona_aov=_to_revenue_aov(total_order_value, total_orders),
+            palona_aov=_to_revenue_aov(
+                float(summary_values["palona_revenue"]), palona_revenue_order_count
+            ),
         ),
         time_series=time_series,
         payment_path=OrderingRevenuePaymentPath(
