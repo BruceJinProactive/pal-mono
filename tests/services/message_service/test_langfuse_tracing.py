@@ -16,11 +16,133 @@ import pytest
 
 from api.schemas.chat.message import AuthorType, Message, Metadata, TextObject
 from db.tables.types import Channel
+from services.message_service import _tracing
 from utils.request_context import RequestContext
 
 # ---------------------------------------------------------------------------
 # Shared test infrastructure
 # ---------------------------------------------------------------------------
+
+
+def _reset_voice_langfuse_client() -> None:
+    _tracing._voice_langfuse_client = None
+
+
+def test_message_span_uses_explicit_voice_langfuse_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = MagicMock()
+    initialized_public_keys: list[str] = []
+    selected_public_keys: list[str | None] = []
+    propagated: dict[str, Any] = {}
+
+    @contextmanager
+    def fake_observation(**kwargs: Any):
+        fake_client.start_kwargs = kwargs
+        yield fake_client
+
+    @contextmanager
+    def fake_set_current_public_key(public_key: str | None):
+        selected_public_keys.append(public_key)
+        yield
+
+    @contextmanager
+    def fake_propagate_attributes(**kwargs: Any):
+        propagated.update(kwargs)
+        yield
+
+    class FakeLangfuse:
+        def __init__(self, *, public_key: str) -> None:
+            initialized_public_keys.append(public_key)
+
+        def start_as_current_observation(self, **kwargs: Any):
+            return fake_observation(**kwargs)
+
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "voice-public")
+    monkeypatch.setattr(_tracing, "Langfuse", FakeLangfuse)
+    monkeypatch.setattr(
+        _tracing,
+        "get_client",
+        lambda: pytest.fail("plain get_client() should not be used"),
+    )
+    monkeypatch.setattr(
+        _tracing, "_set_current_public_key", fake_set_current_public_key
+    )
+    monkeypatch.setattr(_tracing, "propagate_attributes", fake_propagate_attributes)
+    _reset_voice_langfuse_client()
+
+    try:
+        with _tracing.langfuse_message_span(
+            conversation_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            agent_id=uuid.uuid4(),
+            account_name="test-account",
+            project_name="test-project",
+            channel="voice",
+        ) as lf:
+            assert lf is _tracing._voice_langfuse_client
+    finally:
+        _reset_voice_langfuse_client()
+
+    assert initialized_public_keys == ["voice-public"]
+    assert selected_public_keys == ["voice-public"]
+    assert fake_client.start_kwargs == {
+        "name": "Message Service Processing",
+        "as_type": "span",
+    }
+    assert propagated["trace_name"] == "Pal Agent Request"
+    assert "channel:voice" in propagated["tags"]
+
+
+def test_message_span_falls_back_to_default_langfuse_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = MagicMock()
+    default_client_calls = 0
+    selected_public_keys: list[str | None] = []
+
+    @contextmanager
+    def fake_observation(**_kwargs: Any):
+        yield fake_client
+
+    @contextmanager
+    def fake_set_current_public_key(public_key: str | None):
+        selected_public_keys.append(public_key)
+        yield
+
+    @contextmanager
+    def fake_propagate_attributes(**_kwargs: Any):
+        yield
+
+    def fake_get_client() -> MagicMock:
+        nonlocal default_client_calls
+        default_client_calls += 1
+        return fake_client
+
+    fake_client.start_as_current_observation.side_effect = fake_observation
+    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+    monkeypatch.setattr(_tracing, "get_client", fake_get_client)
+    monkeypatch.setattr(
+        _tracing, "_set_current_public_key", fake_set_current_public_key
+    )
+    monkeypatch.setattr(_tracing, "propagate_attributes", fake_propagate_attributes)
+    _reset_voice_langfuse_client()
+
+    try:
+        with _tracing.langfuse_message_span(
+            conversation_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            agent_id=uuid.uuid4(),
+            account_name="test-account",
+            project_name="test-project",
+            channel="sms",
+        ) as lf:
+            assert lf is fake_client
+    finally:
+        _reset_voice_langfuse_client()
+
+    assert default_client_calls == 1
+    assert selected_public_keys == [None]
 
 
 def _ensure_package_module(
