@@ -1223,7 +1223,7 @@ class AnalyticsRepository:
         """
         try:
             start_time = time.time()
-            order_date = func.date(func.coalesce(Order.order_time, Order.created_at))
+            order_date = func.date(Conversation.created_at)
             paid_order = func.lower(Order.status) == "paid"
             has_tracking_link = and_(
                 Order.tracking_link.isnot(None),
@@ -1329,9 +1329,7 @@ class AnalyticsRepository:
                 .join(Conversation, Order.conversation_id == Conversation.id)
                 .join(User, Conversation.user_id == User.id)
                 .where(
-                    func.coalesce(Order.order_time, Order.created_at).between(
-                        start_date, end_date
-                    ),
+                    Conversation.created_at.between(start_date, end_date),
                     ~Conversation.is_test,
                     Order.subtotal.isnot(None),
                     exists(

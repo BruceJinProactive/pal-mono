@@ -68,7 +68,8 @@ class TestGetOrderingRevenueMetrics:
         statement = session.execute.call_args.args[0]
         query = str(statement)
         params = statement.compile().params
-        assert "GROUP BY date(coalesce(orders.order_time, orders.created_at))" in query
+        assert "GROUP BY date(conversations.created_at)" in query
+        assert "conversations.created_at BETWEEN" in query
         assert "conversations.project_id = :project_id_1" in query
         assert "toast_checkout_sessions" in query
         assert "toast_checkout_sessions.order_external_id = orders.order_id" in query
