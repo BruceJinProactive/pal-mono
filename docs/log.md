@@ -6,6 +6,12 @@ Chronological record of significant changes. Each entry links to the relevant do
 
 ## 2026-06-30
 
+- **Vision camera check schedule schema.** Added storage-only
+  `vision_camera_configuration` fields for `check_mode`, daily check start/end
+  times, minute-based check frequency, and weekly observation days, with `daily`
+  as the default mode, `1` minute as the default frequency, and constraints for
+  valid modes, positive frequency, and weekday lists. Migration: `b8a16f03f3bf`.
+  -> `docs/records/2026-06-30-vision-camera-check-schedule-schema.md`
 - **Admin ordering revenue metrics API.** Added the account-scoped Admin Console
   revenue dashboard response shape, including summary totals, daily time series,
   payment-path split, fulfillment split, and store/project rows. ->
